@@ -5,17 +5,58 @@ plugins {
     id 'org.mozilla.rust-android-gradle.rust-android'
 }
 
+configurations {
+    onnxRuntime
+}
+
 cargo {
     module = "../rust"
     libname = "supertonic_tts"
     targets = ["arm64"]
     profile = "release"
+    pythonCommand = "python3"
+}
+
+// Task to extract libonnxruntime.so for the Rust build
+task extractOnnxLib(type: Copy) {
+    from {
+        zipTree(configurations.onnxRuntime.singleFile)
+    }
+    into "${project.buildDir}/onnxruntime"
+    include "jni/arm64-v8a/libonnxruntime.so"
+}
+
+// Task to manually copy the built Rust library to a location Gradle WILL package
+task copyRustLibs(type: Copy) {
+    dependsOn 'cargoBuild'
+    from "${project.buildDir}/rustJniLibs/android"
+    into "${project.buildDir}/finalJniLibs"
+}
+
+// Configure cargoBuild task
+tasks.whenTaskAdded { task ->
+    if (task.name == 'cargoBuild' || task.name == 'cargoBuildArm64') {
+        task.dependsOn extractOnnxLib
+        if (task.hasProperty('environment')) {
+            task.environment 'ORT_LIB_LOCATION', "${project.buildDir}/onnxruntime/jni/arm64-v8a"
+            task.environment 'ORT_SKIP_DOWNLOAD', '1'
+        }
+    }
+    if (task.name.startsWith('merge') && (task.name.endsWith('NativeLibs') || task.name.endsWith('JniLibFolders'))) {
+        task.dependsOn copyRustLibs
+    }
 }
 
 android {
     namespace 'com.brahmadeo.supertonic.tts'
     compileSdk 35
     ndkVersion "26.1.10909125"
+
+    sourceSets {
+        main {
+            // Overridden in afterEvaluate
+        }
+    }
 
     defaultConfig {
         applicationId "com.brahmadeo.supertonic.tts"
@@ -28,7 +69,7 @@ android {
             abiFilters "arm64-v8a"
         }
     }
-
+    
     buildTypes {
         release {
             minifyEnabled false
@@ -36,23 +77,28 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     buildFeatures {
         compose true
+        aidl true
     }
+    
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
+            pickFirst 'lib/arm64-v8a/libonnxruntime.so'
+            pickFirst 'lib/arm64-v8a/libsupertonic_tts.so'
         }
     }
-    buildFeatures {
-        aidl true
-    }
+}
+
+afterEvaluate {
+    android.sourceSets.main.jniLibs.setSrcDirs(["src/main/jniLibs", "${project.buildDir}/finalJniLibs"])
 }
 
 dependencies {
@@ -68,10 +114,10 @@ dependencies {
     implementation 'androidx.activity:activity-compose:1.8.2'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
-    // Explicitly requesting 1.4.0-alpha04 for Expressive support
     implementation 'androidx.compose.material3:material3:1.4.0-alpha04'
     implementation 'androidx.compose.material:material-icons-extended'
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.23.2'
+    onnxRuntime 'com.microsoft.onnxruntime:onnxruntime-android:1.23.2'
     
     debugImplementation 'androidx.compose.ui:ui-tooling'
 }

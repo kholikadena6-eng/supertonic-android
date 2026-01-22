@@ -10,8 +10,15 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun DownloadScreen(
     status: String,
-    progress: Float
+    progress: Float,
+    version: String
 ) {
+    val message = if (version == "v2") {
+        "Downloading Multilingual Models (~350MB). This enables support for French, Spanish, Portuguese, and Korean. This specific download happens only once."
+    } else {
+        "Downloading Standard English Models (~350MB). This is a one-time setup for English synthesis."
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -30,7 +37,7 @@ fun DownloadScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Supertonic needs to download ~350MB of AI models to run offline. This only happens once.",
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center

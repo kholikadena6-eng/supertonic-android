@@ -28,6 +28,7 @@ class MainViewModel : ViewModel() {
 
     // Asset Download State
     var isDownloading = mutableStateOf(false)
+    var downloadingVersion = mutableStateOf("v1")
     var downloadProgress = mutableFloatStateOf(0f)
     var downloadStatus = mutableStateOf("Checking assets...")
 

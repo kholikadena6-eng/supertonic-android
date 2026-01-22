@@ -156,7 +156,8 @@ class MainActivity : ComponentActivity() {
                 if (viewModel.isDownloading.value) {
                     DownloadScreen(
                         status = viewModel.downloadStatus.value,
-                        progress = viewModel.downloadProgress.value
+                        progress = viewModel.downloadProgress.value,
+                        version = viewModel.downloadingVersion.value
                     )
                 } else {
                     if (viewModel.showQueueDialog.value) {
@@ -271,20 +272,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun loadPreferences() {
+        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        viewModel.currentLang.value = prefs.getString("selected_lang", "en") ?: "en"
+        viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+        viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", "M2.json") ?: "M2.json"
+        viewModel.isMixingEnabled.value = prefs.getBoolean("is_mixing_enabled", false)
+        viewModel.mixAlpha.value = prefs.getFloat("mix_alpha", 0.5f)
+        viewModel.currentSpeed.value = prefs.getFloat("speed", 1.1f)
+        viewModel.currentSteps.value = prefs.getInt("diffusion_steps", 5)
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    private fun getLocalizedResource(context: Context, lang: String, resId: Int): String {
+        val locale = java.util.Locale(lang)
+        val config = android.content.res.Configuration(context.resources.configuration)
+        config.setLocale(locale)
+        val localizedContext = context.createConfigurationContext(config)
+        return localizedContext.resources.getString(resId)
+    }
+
+    private fun saveStringPref(key: String, value: String) {
+        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
+            .putString(key, value)
+            .apply()
+    }
+
     private fun startDownload(version: String) {
         viewModel.isDownloading.value = true
+        viewModel.downloadingVersion.value = version
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (version == "v1") {
                     AssetManager.downloadV1(this@MainActivity) { status, progress ->
-                        withContext(Dispatchers.Main) {
+                        runOnUiThread {
                             viewModel.downloadStatus.value = status
                             viewModel.downloadProgress.value = progress
                         }
                     }
                 } else {
                     AssetManager.downloadV2(this@MainActivity) { status, progress ->
-                        withContext(Dispatchers.Main) {
+                        runOnUiThread {
                             viewModel.downloadStatus.value = status
                             viewModel.downloadProgress.value = progress
                         }
@@ -293,17 +328,12 @@ class MainActivity : ComponentActivity() {
                 
                 withContext(Dispatchers.Main) {
                     viewModel.isDownloading.value = false
-                    // If this was triggered by switchModel, we need to finalize the switch
-                    // If triggered by onCreate, we initialize.
-                    // Safe to just initialize the requested version.
                     initializeEngine(version)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     viewModel.isDownloading.value = false
                     Toast.makeText(this@MainActivity, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
-                    // Fallback: if switching failed, maybe revert UI? 
-                    // For simplicity, we just leave it in previous state or uninitialized.
                 }
             }
         }
@@ -317,6 +347,9 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 setupVoicesMap(version)
             }
+            
+            // Force release of any existing engine to ensure we load the new model path
+            SupertonicTTS.release()
             
             val modelPath = File(filesDir, "$version/onnx").absolutePath
             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
