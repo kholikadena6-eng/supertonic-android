@@ -66,6 +66,11 @@ The application serves two main purposes:
 *   `app/src/main/jniLibs/arm64-v8a/`: Pre-compiled native libraries.
     *   `libonnxruntime.so`: Microsoft ONNX Runtime.
     *   `libsupertonic_tts.so`: Supertonic C++ core logic.
+*   `metadata/`: F-Droid build metadata.
+    *   `com.brahmadeo.supertonic.tts.yml`: Build recipe and metadata.
+*   `rust/`: Native Rust/JNI bridge.
+    *   `vendor/`: Local cache of all Rust crates (for offline builds).
+    *   `.cargo/config.toml`: Configures Cargo to use the vendored sources.
 
 ### Voice Personas
 Voices are treated as "Personas" that work across all supported languages.
@@ -100,6 +105,16 @@ To build the debug APK:
 cd android
 gradle assembleDebug
 ```
+
+The build process is configured to handle the native Rust compilation automatically.
+*   **Offline Mode:** Rust dependencies are vendored in `rust/vendor`, allowing builds without internet access (required for F-Droid).
+*   **Library Packaging:** The Gradle script includes custom tasks `extractOnnxLib` (to provide `libonnxruntime.so` to the linker) and `copyRustLibs` (to ensure `libsupertonic_tts.so` is correctly packaged in the APK with AGP 8.x).
+
+### F-Droid Release
+This project is configured for inclusion in the F-Droid repository.
+*   **Metadata:** See `metadata/com.brahmadeo.supertonic.tts.yml`.
+*   **Offline Requirement:** All Rust crates are checked into `rust/vendor`. The `rust/.cargo/config.toml` file forces Cargo to use these local sources.
+*   **Reproducible Builds:** The build environment is standardized (NDK r26b, etc.) via the metadata YAML.
 
 ### Setup on Device
 1.  Install the app.
