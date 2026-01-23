@@ -11,13 +11,13 @@ Repo: https://github.com/DevGitPit/supertonic-android
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: '1.1'
+CurrentVersion: '2.0.0-alpha.1'
 CurrentVersionCode: 2
 
 Builds:
-  - versionName: '1.1'
+  - versionName: '2.0.0-alpha.1'
     versionCode: 2
-    commit: v1.1
+    commit: HEAD
     gradle:
       - yes
     ndk: r26b
@@ -29,8 +29,6 @@ Builds:
       - sh rustup-init.sh -y --default-toolchain stable
       - source $HOME/.cargo/env
       - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-      - sed -i 's/2.0.0-rc.7/2.0.0-rc.11/g' rust/Cargo.toml
-      - sed -i 's/0.17/0.17.2/g' rust/Cargo.toml
       - mkdir -p rust/.cargo
       - echo '[target.aarch64-linux-android]' > rust/.cargo/config.toml
       - echo 'linker = "aarch64-linux-android34-clang"' >> rust/.cargo/config.toml

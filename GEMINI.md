@@ -1,135 +1,87 @@
 # Supertonic Android Application
 
 ## Project Overview
-This directory contains the complete **Android application** for Supertonic, a high-performance, on-device text-to-speech (TTS) system. It demonstrates how to integrate the Supertonic ONNX models into a mobile app using Kotlin and JNI.
+This directory contains the **Android application** for Supertonic, a high-performance, on-device text-to-speech (TTS) system. It demonstrates how to integrate the Supertonic ONNX models into a mobile app using Kotlin and JNI.
 
 The application serves two main purposes:
-1.  **Standalone TTS Player:** A user-friendly, immersive interface to type/paste text, select voices, and generate speech instantly.
+1.  **Standalone TTS Player:** A user-friendly interface to type/paste text, select voices, and generate speech.
 2.  **System TTS Service:** Implements the Android `TextToSpeechService` API, allowing Supertonic to be used as the system-wide TTS engine.
 
 ## Key Features
 *   **Offline Inference:** Runs entirely on-device using ONNX Runtime.
-*   **Multilingual Support:** Native support for **English, Korean, Spanish, Portuguese, and French**.
-*   **v2.0.0-alpha.1 Stable Pipeline:** Robust integration of the Supertonic V2 engine with specific fixes for audio distortion and cross-language switching.
-*   **Automatic Language Detection:** Smart regex-based per-sentence detection allowing seamless reading of mixed-language text.
-*   **Gapless Playback:** Implements a Producer-Consumer pipeline to synthesize the next sentence while the current one plays, eliminating latency between sentences.
-*   **Material Design 3 (Expressive):** Modern, coherent UI with dynamic semantic colors and dark mode support.
-*   **UI Localization:** The interface automatically adapts to the system language (English, Korean, Spanish, Portuguese, French).
-*   **Edge-to-Edge Support:** Optimized for Android 15/16 system insets and curved displays.
-*   **Digital Volume Boost:** Built-in 2.5x gain with hard-clipping protection for significantly louder audio output.
-*   **User Pronunciation Dictionary (Lexicon):** Custom rules to correct or change how specific terms are pronounced, including Import/Export support via JSON.
-*   **AIDL Architecture:** Robust inter-process communication (IPC) for both internal playback and third-party app integration (e.g., eBook readers).
-*   **Smart Audio Focus:** Intelligently handles system interruptions (notifications, calls), resuming only if the interruption was transient and not a manual user pause.
-*   **Immersive Reader:** Distraction-free playback interface with text highlighting.
-*   **Audio Export:** Save synthesized speech as WAV files to the Music directory.
-*   **Rich Media Controls:** Native Android media notification with album art, play/pause, and metadata.
-*   **History:** Tracks recent synthesis requests.
+*   **Multilingual Support:** Supports multiple languages as defined by the models.
+*   **Native Rust Core:** Uses a Rust backend (`supertonic_tts`) accessed via JNI for high-performance inference.
+*   **Material Design 3:** Modern UI built with Jetpack Compose.
+*   **System Integration:** Works as a standard Android TTS provider.
+*   **Audio Export:** Save synthesized speech as WAV files.
+*   **Lexicon Management:** User-defined pronunciation rules.
+*   **History & Queue:** Track and manage synthesis requests.
 
 ## Architecture
 
-### Stability Fixes (v2)
-- **Token Filtering:** The JNI/Rust layer now maps unknown character indices (-1) to 0 (Space) to prevent digital "blending" noise caused by the V2 model's specific indexer requirements.
-- **Preprocessing:** Correctly handles **NFKD decomposition** for Hangul and Latin accents, ensuring the engine receives the expected phonetic components.
-- **Language Signaling:** Uses unconditional `<lang>` tags to ensure the V2 engine correctly switches between its trained language models.
-- **System TTS Fix:** Restored support for apps like **Readera** by implementing explicit 3-letter ISO code declarations and advertising Supertonic voices across all supported locales.
-
 ### Directory Structure
-*   `app/src/main/aidl/com/brahmadeo/supertonic/tts/service/`: AIDL interface definitions.
-    *   `IPlaybackService.aidl`: Main control interface for synthesis and playback.
-    *   `IPlaybackListener.aidl`: Callback interface for progress and state updates.
 *   `app/src/main/java/com/brahmadeo/supertonic/tts/`: Kotlin source code.
-    *   `MainActivity.kt`: Main UI for input and configuration (Controls anchored to bottom).
-    *   `PlaybackActivity.kt`: Immersive player with sentence highlighting.
-    *   `HistoryActivity.kt`: View recent synthesis requests.
-    *   `SavedAudioActivity.kt`: Manage exported WAV files.
-    *   `LexiconActivity.kt`: User dictionary management (Add/Edit/Delete pronunciation rules).
-    *   `SupertonicTTS.kt`: JNI wrapper class (Singleton) for the native C++ library.
+    *   `MainActivity.kt`, `PlaybackActivity.kt`, `QueueActivity.kt`: Key entry points.
+    *   `SupertonicTTS.kt`: JNI wrapper class for the native Rust library.
+    *   `ui/`: Jetpack Compose screens (`MainScreen`, `PlaybackScreen`, `HistoryScreen`, `LexiconScreen`, `QueueScreen`, `SavedAudioScreen`).
+    *   `viewmodel/`: `MainViewModel.kt` for UI state management.
     *   `service/`:
-        *   `PlaybackService.kt`: Foreground service handling the audio pipeline (Producer-Consumer).
+        *   `PlaybackService.kt`: Foreground service handling audio playback.
         *   `SupertonicTextToSpeechService.kt`: System TTS service implementation.
-    *   `utils/`:
-        *   `TextNormalizer.kt`: Robust regex-based normalization (currencies, dates, measurements).
-        *   `LanguageDetector.kt`: Smart per-sentence language detection.
-        *   `CurrencyNormalizer.kt`: Handles complex currency formats.
-        *   `LexiconManager.kt`: Manages user-defined pronunciation rules.
-        *   `HistoryManager.kt`: JSON-based history persistence.
-        *   `WavUtils.kt`: WAV header generation.
-*   `app/src/main/assets/`: Contains the required model files.
-    *   `onnx/`: The core ONNX models.
-    *   `voice_styles/`: JSON configuration files for different voice personas.
-*   `app/src/main/res/`: Resources.
-    *   `values/strings.xml`: Default (English) strings.
-    *   `values-ko/`: Korean translations.
-    *   `values-es/`: Spanish translations.
-    *   `values-pt/`: Portuguese translations.
-    *   `values-fr/`: French translations.
-*   `app/src/main/jniLibs/arm64-v8a/`: Pre-compiled native libraries.
-    *   `libonnxruntime.so`: Microsoft ONNX Runtime.
-    *   `libsupertonic_tts.so`: Supertonic C++ core logic.
+    *   `utils/`: Helpers for text normalization, language detection, and file management (`TextNormalizer`, `LanguageDetector`, `WavUtils`, `AssetManager`, `QueueManager`).
+*   `rust/`: Native Rust/JNI bridge.
+    *   `src/lib.rs`: Main JNI interface (init, synthesize, thermal management).
+    *   `src/helper.rs`: TTS engine logic.
+    *   `src/thermal.rs`: Thermal management.
+    *   `vendor/`: Vendored Rust dependencies for offline builds.
+    *   `.cargo/config.toml`: Cargo configuration (potentially modified by build scripts).
 *   `metadata/`: F-Droid build metadata.
     *   `com.brahmadeo.supertonic.tts.yml`: Build recipe and metadata.
-*   `rust/`: Native Rust/JNI bridge.
-    *   `vendor/`: Local cache of all Rust crates (for offline builds).
-    *   `.cargo/config.toml`: Configures Cargo to use the vendored sources.
 
-### Voice Personas
-Voices are treated as "Personas" that work across all supported languages.
-*   **Male:** Alex (M1), James (M2), Robert (M3), Sam (M4), Daniel (M5)
-*   **Female:** Sarah (F1), Lily (F2), Jessica (F3), Olivia (F4), Emily (F5)
+### Native Bridge
+The app uses `SupertonicTTS.kt` to communicate with the compiled Rust library (`libsupertonic_tts.so`).
+*   **Initialization:** Loads ONNX models and configures the engine.
+*   **Synthesis:** Generates PCM audio data from text.
+*   **Thermal Management:** Monitors device state to adjust performance.
 
-### Core Components
-*   **Audio Pipeline (`PlaybackService`)**: Uses a Kotlin Coroutine `Channel` (capacity 2) to buffer synthesized audio. The "Producer" coroutine synthesizes sentences ahead of time and applies a **2.5x digital gain**, while the "Consumer" loop plays them using `AudioTrack` in `MODE_STATIC` for instant starts.
-*   **Native Bridge**: `SupertonicTTS.kt` exposes thread-safe methods for `initialize()` and `generateAudio()`.
-*   **Text Normalization**: A dedicated `TextNormalizer` class handles complex patterns (e.g., "$2.5bn" -> "two point five billion dollars") to ensure natural reading.
+### Build Configuration
+*   **Gradle:** `app/build.gradle` manages the Android build and triggers the Cargo build for the Rust library.
+    *   **Plugin:** `org.mozilla.rust-android-gradle.rust-android` handles Rust compilation.
+    *   **Tasks:** `extractOnnxLib` (prepares `libonnxruntime.so`), `copyRustLibs` (packages native libs).
+*   **Rust:** `rust/Cargo.toml` defines dependencies (ort, ndarray, rayon, etc.).
+*   **F-Droid:** The project is configured for F-Droid with offline dependency vendoring (`rust/vendor`).
 
 ## Building and Running
 
 ### Prerequisites
-*   **Android Studio** or **Gradle** command line tools.
-*   **JDK 17**.
-*   **Git LFS** (ensure `assets/` in the project root are downloaded).
+*   **JDK 17** (required by `app/build.gradle` options).
+*   **Android SDK** (API 35).
+*   **NDK** (Version 26.1.10909125 or similar).
+*   **Rust Toolchain** (via `rustup`, targets: `aarch64-linux-android`, `x86_64-linux-android`, etc.).
+*   **Git LFS** (Critical for `assets/` models).
 
-### Termux Setup (One-time)
-If building on Termux, run the setup script to install dependencies and configure the environment:
-```bash
-./setup_termux_build.sh
-```
+### Build Process
+1.  **Initialize Rust Targets:**
+    ```bash
+    rustup target add aarch64-linux-android
+    ```
+2.  **Build APK:**
+    ```bash
+    ./gradlew assembleDebug
+    ```
+    (Note: Ensure `local.properties` points to your SDK and NDK).
 
-### Build Commands
-To build the debug APK:
-```bash
-# First, ensure JNI libs are compiled
-./compile_jni_libs.sh
+### F-Droid Build Notes
+*   **Metadata:** `metadata/com.brahmadeo.supertonic.tts.yml`
+*   **Offline Mode:** `rust/.cargo/config.toml` should be configured to use `vendor/` source replacement for reproducible, offline builds.
+*   **Linker:** The F-Droid metadata might inject specific linker configurations (e.g., `aarch64-linux-android34-clang`).
 
-# Then build the APK (using system gradle in Termux)
-cd android
-gradle assembleDebug
-```
+## Known Issues
+*   **F-Droid Build Failure:** Discrepancies between the local environment and F-Droid's build server (linker versions, NDK paths, offline vendoring) can cause failures.
+*   **Metadata Mismatch:** The current code (`v2.0.0-alpha.1`+) might be ahead of the `v1.1` tag defined in `metadata/com.brahmadeo.supertonic.tts.yml`.
 
-The build process is configured to handle the native Rust compilation automatically.
-*   **Offline Mode:** Rust dependencies are vendored in `rust/vendor`, allowing builds without internet access (required for F-Droid).
-*   **Library Packaging:** The Gradle script includes custom tasks `extractOnnxLib` (to provide `libonnxruntime.so` to the linker) and `copyRustLibs` (to ensure `libsupertonic_tts.so` is correctly packaged in the APK with AGP 8.x).
-
-### F-Droid Release
-This project is configured for inclusion in the F-Droid repository.
-*   **Metadata:** See `metadata/com.brahmadeo.supertonic.tts.yml`.
-*   **Offline Requirement:** All Rust crates are checked into `rust/vendor`. The `rust/.cargo/config.toml` file forces Cargo to use these local sources.
-*   **Reproducible Builds:** The build environment is standardized (NDK r26b, etc.) via the metadata YAML.
-
-### Setup on Device
-1.  Install the app.
-2.  Open **Supertonic** to initialize assets (wait for "Ready" status).
-3.  (Optional) To use system-wide:
-    *   Go to **Settings > Accessibility > Text-to-speech output**.
-    *   Select **Preferred engine** and choose **Supertonic TTS**.
-
-## Development Conventions
-*   **Language:** Kotlin (UI/Logic) and C++ (Native Core).
-*   **UI Framework:** XML Layouts using **Material Components** (M3).
-*   **Threading:** Heavy operations (synthesis, asset copying) run on `Dispatchers.IO`.
-*   **Style:** Follows Material Design 3 guidelines (Semantic Colors, Shapes, Typography).
-
-## Known Issues & Fixes
-*   **Audio Cutoff (v2 Models):** The v2 Flow Matching models can sometimes underestimate sentence duration, causing the last word to be cut off.
-    *   *Fix Applied:* The native engine (`cpp/` and `rust/`) now adds a **0.3s safety padding** to the synthesis duration and plays the full generative buffer without truncation.
-    *   *Side Effect:* You might hear a faint echo or reverb tail at the end of sentences. This is preferable to cutting off words. To tune this, adjust the padding constant in `rust/src/helper.rs`.
+## Development
+*   **Namespace:** `com.brahmadeo.supertonic.tts`
+*   **Min SDK:** 24
+*   **Target SDK:** 35
+*   **Compile SDK:** 35
