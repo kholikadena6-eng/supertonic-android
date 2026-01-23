@@ -22,9 +22,13 @@ Builds:
       - yes
     ndk: r26b
     prebuild:
-      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-      - export PATH="$HOME/.cargo/bin:$PATH"
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+      - sh rustup-init.sh -y --default-toolchain stable
+      - source $HOME/.cargo/env
       - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
     build:
       - export PATH="$HOME/.cargo/bin:$PATH"
       - gradle assembleRelease
+    scanignore:
+      - rust/vendor/wit-bindgen-0.51.0/wasi-cli@0.2.0.wasm
+      - rust/vendor/regex-automata-0.4.13/tests/fuzz/testdata/
