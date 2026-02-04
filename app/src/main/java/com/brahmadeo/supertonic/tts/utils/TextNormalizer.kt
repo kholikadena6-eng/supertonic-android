@@ -41,11 +41,6 @@ class TextNormalizer {
             "${m.group(1)} to ${m.group(2)}"
         }
 
-        // SMART QUOTES NORMALIZATION (Priority: Highest)
-        // Convert to ASCII to ensure engine compatibility
-        addStr("[‘’]", "'")
-        addStr("[“”]", "\"")
-
         // EM DASH NORMALIZATION (Priority: High)
         // Replace em dashes with comma to prevent hard pauses/sentence splitting
         addStr("\\s*[—]\\s*", ", ")
