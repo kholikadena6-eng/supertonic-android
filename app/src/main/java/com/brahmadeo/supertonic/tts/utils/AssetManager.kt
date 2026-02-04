@@ -37,13 +37,13 @@ object AssetManager {
         "voice_styles/F1.json", "voice_styles/F2.json", "voice_styles/F3.json", "voice_styles/F4.json", "voice_styles/F5.json"
     )
 
-    fun isV1Ready(context: Context): Boolean = checkReady(context, "v1")
-    fun isV2Ready(context: Context): Boolean = checkReady(context, "v2")
+    fun isV1Ready(context: Context): Boolean = checkReady(context, "v1", V1_FILES)
+    fun isV2Ready(context: Context): Boolean = checkReady(context, "v2", V2_FILES)
 
-    private fun checkReady(context: Context, version: String): Boolean {
+    private fun checkReady(context: Context, version: String, files: List<String>): Boolean {
         val baseDir = File(context.filesDir, version)
-        return File(baseDir, "onnx/vocoder.onnx").exists() && 
-               File(baseDir, "voice_styles/M1.json").exists()
+        if (!baseDir.exists()) return false
+        return files.all { File(baseDir, it).exists() }
     }
 
     suspend fun downloadV1(context: Context, onProgress: (String, Float) -> Unit) {
@@ -52,6 +52,13 @@ object AssetManager {
 
     suspend fun downloadV2(context: Context, onProgress: (String, Float) -> Unit) {
         downloadVersion(context, "v2", BASE_URL_V2, V2_FILES, onProgress)
+    }
+
+    fun deleteVersion(context: Context, version: String) {
+        val baseDir = File(context.filesDir, version)
+        if (baseDir.exists()) {
+            baseDir.deleteRecursively()
+        }
     }
 
     private suspend fun downloadVersion(
@@ -72,7 +79,9 @@ object AssetManager {
                     return@forEachIndexed
                 }
 
-                if (!targetFile.parentFile.exists()) targetFile.parentFile.mkdirs()
+                targetFile.parentFile?.let {
+                    if (!it.exists()) it.mkdirs()
+                }
 
                 // Hugging Face structure for V1 is "supertonic/onnx/..."
                 // But the file list assumes relative path matches URL path structure.

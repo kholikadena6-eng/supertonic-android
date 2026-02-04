@@ -21,6 +21,7 @@ import com.brahmadeo.supertonic.tts.ui.LexiconScreen
 import com.brahmadeo.supertonic.tts.ui.theme.SupertonicTheme
 import com.brahmadeo.supertonic.tts.utils.LexiconItem
 import com.brahmadeo.supertonic.tts.utils.LexiconManager
+import com.brahmadeo.supertonic.tts.utils.AssetManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.json.JSONArray
 import org.json.JSONObject
@@ -254,6 +255,14 @@ class LexiconActivity : ComponentActivity() {
         val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
         val version = if (selectedLang == "en") "v1" else "v2"
+
+        // Check if assets are ready
+        val isReady = if (version == "v1") AssetManager.isV1Ready(this) else AssetManager.isV2Ready(this)
+        if (!isReady) {
+            Toast.makeText(this, "Assets not ready. Please download them on the main screen.", Toast.LENGTH_LONG).show()
+            return
+        }
+
         val voiceFile = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
         
         // Ensure we point to the correct versioned directory

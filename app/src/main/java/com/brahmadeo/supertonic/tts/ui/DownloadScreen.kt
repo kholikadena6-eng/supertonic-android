@@ -11,7 +11,9 @@ import androidx.compose.ui.unit.dp
 fun DownloadScreen(
     status: String,
     progress: Float,
-    version: String
+    version: String,
+    error: String? = null,
+    onRetry: () -> Unit = {}
 ) {
     val message = if (version == "v2") {
         "Downloading Multilingual Models (~350MB). This enables support for French, Spanish, Portuguese, and Korean. This specific download happens only once."
@@ -31,28 +33,39 @@ fun DownloadScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Downloading Models",
+                text = if (error != null) "Download Failed" else "Downloading Models",
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = message,
+                text = if (error != null) error else message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(32.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = status,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            
+            if (error == null) {
+                Spacer(modifier = Modifier.height(32.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = onRetry,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Retry Download")
+                }
+            }
         }
     }
 }

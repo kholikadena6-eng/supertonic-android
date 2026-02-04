@@ -59,6 +59,8 @@ fun MainScreen(
     onHistoryClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLexiconClick: () -> Unit,
+    onDeleteV2Click: () -> Unit,
+    isV2Ready: Boolean,
 
     // Mini Player
     showMiniPlayer: Boolean,
@@ -90,6 +92,12 @@ fun MainScreen(
                             onClick = { showMenu = false; onLexiconClick() },
                             enabled = currentLangCode == "en"
                         )
+                        if (isV2Ready && currentLangCode == "en") {
+                            DropdownMenuItem(
+                                text = { Text("Delete Multilingual Models", color = MaterialTheme.colorScheme.error) },
+                                onClick = { showMenu = false; onDeleteV2Click() }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -300,7 +308,7 @@ fun DropdownSelector(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth()
         )
         ExposedDropdownMenu(
