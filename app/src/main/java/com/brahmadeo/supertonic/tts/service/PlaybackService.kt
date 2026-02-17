@@ -106,6 +106,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         const val NOTIFICATION_ID = 1
         const val TAG = "PlaybackService"
         const val VOLUME_BOOST_FACTOR = 2.5f
+        const val AUDIO_WRITE_CHUNK_SIZE = 8192
     }
 
     private fun applyVolumeBoost(pcmData: ByteArray, gain: Float): ByteArray {
@@ -312,32 +313,37 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         val rate = SupertonicTTS.getAudioSampleRate()
         
         // Reuse or create AudioTrack
-        var track = audioTrack
-        if (track == null || lastTrackRate != rate || track.state == AudioTrack.STATE_UNINITIALIZED) {
-            try { track?.release() } catch (e: Exception) {}
-            
-            val minBufferSize = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 4
-            track = AudioTrack.Builder()
-                .setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build())
-                .setAudioFormat(AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(rate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build())
-                .setBufferSizeInBytes(minBufferSize)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
-            
-            audioTrack = track
-            lastTrackRate = rate
+        var track: AudioTrack? = null
+        synchronized(this) {
+            track = audioTrack
+            if (track == null || lastTrackRate != rate || track?.state == AudioTrack.STATE_UNINITIALIZED) {
+                try { track?.release() } catch (e: Exception) {}
+                
+                val minBufferSize = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 4
+                track = AudioTrack.Builder()
+                    .setAudioAttributes(AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build())
+                    .setAudioFormat(AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(rate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build())
+                    .setBufferSizeInBytes(minBufferSize)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
+                
+                audioTrack = track
+                lastTrackRate = rate
+            }
         }
         
+        val safeTrack = track ?: return
+
         withContext(Dispatchers.Main) {
-            if (isPlaying && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                track.play()
+            if (isPlaying && safeTrack.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                safeTrack.play()
                 notifyListenerState(true)
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             }
@@ -345,26 +351,30 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         
         // Use a small wait logic to keep progress UI somewhat in sync
         // but start writing the next chunk before this one is fully finished.
-        val startHead = track.playbackHeadPosition
+        val startHead = safeTrack.playbackHeadPosition
         val chunkSamples = data.size / 2
         
         // Write data in loop to handle pause/resume gracefully
         var offset = 0
         while (offset < data.size && currentCoroutineContext().isActive && isSynthesizing) {
             if (!isPlaying) {
-                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
+                if (safeTrack.playState == AudioTrack.PLAYSTATE_PLAYING) safeTrack.pause()
                 delay(100)
                 continue
             } else {
-                if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+                if (safeTrack.playState != AudioTrack.PLAYSTATE_PLAYING) safeTrack.play()
             }
             
-            val toWrite = Math.min(data.size - offset, 8192)
-            val written = track.write(data, offset, toWrite, AudioTrack.WRITE_BLOCKING)
+            val toWrite = Math.min(data.size - offset, AUDIO_WRITE_CHUNK_SIZE)
+            val written = safeTrack.write(data, offset, toWrite, AudioTrack.WRITE_BLOCKING)
             if (written > 0) {
                 offset += written
-            } else if (written < 0) {
-                Log.e(TAG, "AudioTrack write error: $written")
+            } else {
+                if (written < 0) {
+                    Log.e(TAG, "AudioTrack write error: $written")
+                } else {
+                    Log.w(TAG, "AudioTrack write returned 0, stopping chunk playback")
+                }
                 break
             }
         }
@@ -374,7 +384,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         // We leave about 100ms of "overlap" to ensure zero gap.
         val samplesToWait = chunkSamples - (rate / 10) // Wait until 100ms before end
         while (currentCoroutineContext().isActive && isSynthesizing && isPlaying) {
-            val headMove = track.playbackHeadPosition - startHead
+            val headMove = safeTrack.playbackHeadPosition - startHead
             if (headMove >= samplesToWait) break
             delay(50)
         }
@@ -408,11 +418,13 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     }
 
     fun stopPlayback(removeNotification: Boolean = true) {
-        try {
-            audioTrack?.stop()
-            audioTrack?.release()
-        } catch (e: Exception) { }
-        audioTrack = null
+        synchronized(this) {
+            try {
+                audioTrack?.stop()
+                audioTrack?.release()
+            } catch (e: Exception) { }
+            audioTrack = null
+        }
         isPlaying = false
         resumeOnFocusGain = false
         notifyListenerState(false)

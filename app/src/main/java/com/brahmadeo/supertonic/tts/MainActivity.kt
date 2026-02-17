@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
         QueueManager.initialize(this)
 
         // Initial setup based on saved language
-        val savedLang = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).getString("selected_lang", "en") ?: "en"
+        val savedLang = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
         currentModelVersion = if (savedLang == "en") "v1" else "v2"
 
         // On FIRST LAUNCH, we check/download the required version.
@@ -343,13 +343,13 @@ class MainActivity : ComponentActivity() {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
-        viewModel.currentLang.value = prefs.getString("selected_lang", "en") ?: "en"
-        viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
-        viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", "M2.json") ?: "M2.json"
+        viewModel.currentLang.value = prefs.getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
+        viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", MainViewModel.DEFAULT_VOICE) ?: MainViewModel.DEFAULT_VOICE
+        viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", MainViewModel.DEFAULT_VOICE_2) ?: MainViewModel.DEFAULT_VOICE_2
         viewModel.isMixingEnabled.value = prefs.getBoolean("is_mixing_enabled", false)
         viewModel.mixAlpha.value = prefs.getFloat("mix_alpha", 0.5f)
-        viewModel.currentSpeed.value = prefs.getFloat("speed", 1.1f)
-        viewModel.currentSteps.value = prefs.getInt("diffusion_steps", 5)
+        viewModel.currentSpeed.value = prefs.getFloat("speed", MainViewModel.DEFAULT_SPEED) ?: MainViewModel.DEFAULT_SPEED
+        viewModel.currentSteps.value = prefs.getInt("diffusion_steps", MainViewModel.DEFAULT_STEPS)
     }
 
     private fun checkNotificationPermission() {

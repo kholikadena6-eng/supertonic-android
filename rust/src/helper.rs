@@ -610,7 +610,7 @@ impl TextToSpeech {
         })?;
 
         let duration_data = dp_outputs["duration"].try_extract_tensor::<f32>()?;
-        let mut duration: Vec<f32> = duration_data.1.to_owned().to_vec();
+        let mut duration: Vec<f32> = duration_data.1.to_vec();
         
         // Apply speed factor to duration
         for dur in duration.iter_mut() {
@@ -629,7 +629,7 @@ impl TextToSpeech {
         let text_emb_shape = text_emb_data.0;
         let text_emb = Array3::from_shape_vec(
             (text_emb_shape[0] as usize, text_emb_shape[1] as usize, text_emb_shape[2] as usize),
-            text_emb_data.1.to_owned().to_vec()
+            text_emb_data.1.to_vec()
         )?;
 
         // Sample noisy latent
@@ -669,7 +669,7 @@ impl TextToSpeech {
             let denoised_shape = denoised_data.0;
             xt = Array3::from_shape_vec(
                 (denoised_shape[0] as usize, denoised_shape[1] as usize, denoised_shape[2] as usize),
-                denoised_data.1.to_owned().to_vec()
+                denoised_data.1.to_vec()
             )?;
         }
 
@@ -680,7 +680,7 @@ impl TextToSpeech {
         })?;
 
         let wav_data = vocoder_outputs["wav_tts"].try_extract_tensor::<f32>()?;
-        let wav: Vec<f32> = wav_data.1.to_owned().to_vec();
+        let wav: Vec<f32> = wav_data.1.to_vec();
 
         Ok((wav, duration))
     }
@@ -856,7 +856,7 @@ fn create_session(model_path: &str, use_xnnpack: bool, ort_threads: usize, xnn_t
     if use_xnnpack {
         #[cfg(feature = "xnnpack")]
         {
-            let xnn_threads_nz = std::num::NonZeroUsize::new(xnn_threads).unwrap_or(std::num::NonZeroUsize::new(1).unwrap());
+            let xnn_threads_nz = std::num::NonZeroUsize::new(xnn_threads).unwrap_or(std::num::NonZeroUsize::MIN);
             builder = builder
                 .with_execution_providers([
                     XNNPACKExecutionProvider::default()
@@ -877,9 +877,9 @@ pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool, use_xnnpack: bool, ort
     }
     
     if use_xnnpack {
-        println!("Using XNNPACK ({}) with ORT ({}) threads\n", xnn_threads, ort_threads);
+        log::info!("Using XNNPACK ({}) with ORT ({}) threads", xnn_threads, ort_threads);
     } else {
-        println!("Using CPU for inference with {} threads\n", ort_threads);
+        log::info!("Using CPU for inference with {} threads", ort_threads);
     }
 
     let cfgs = load_cfgs(onnx_dir)?;
