@@ -344,7 +344,7 @@ class MainActivity : ComponentActivity() {
     private fun loadPreferences() {
         val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
         viewModel.currentLang.value = prefs.getString("selected_lang", "en") ?: "en"
-        viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+        viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", "M2.json") ?: "M2.json"
         viewModel.isMixingEnabled.value = prefs.getBoolean("is_mixing_enabled", false)
         viewModel.mixAlpha.value = prefs.getFloat("mix_alpha", 0.5f)

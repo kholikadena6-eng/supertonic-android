@@ -758,6 +758,34 @@ impl TextToSpeech {
 // Component Loading Functions
 // ============================================================================ 
 
+use ort::session::{Session, SessionBuilder};
+use ort::execution_providers::{CPUExecutionProvider, XNNPACKExecutionProvider};
+
+fn create_session(model_path: &str, use_xnnpack: bool, intra_threads: usize, xnn_threads: usize) -> Result<Session> {
+    let mut builder = Session::builder()?
+        .with_optimization_level(ort::session::GraphOptimizationLevel::Level3)?
+        // Battery/Thermal: Disable spinning to let threads park when idle
+        .with_config_entry("session.intra_op.allow_spinning", "0")?
+        .with_config_entry("session.inter_op.allow_spinning", "0")?
+        .with_intra_threads(intra_threads)?;
+
+    if use_xnnpack {
+        #[cfg(feature = "xnnpack")]
+        {
+            let xnn_threads_nz = std::num::NonZeroUsize::new(xnn_threads)
+                .unwrap_or(std::num::NonZeroUsize::new(1).unwrap());
+            builder = builder
+                .with_execution_providers([
+                    XNNPACKExecutionProvider::default()
+                        .with_intra_op_num_threads(xnn_threads_nz)
+                        .build(),
+                    CPUExecutionProvider::default().build(),
+                ])?;
+        }
+    }
+    builder.commit_from_file(model_path).context(format!("Failed to load model: {}", model_path))
+}
+
 /// Load voice style from JSON files
 pub fn load_voice_style(voice_style_paths: &[String], verbose: bool) -> Result<Style> {
     let bsz = voice_style_paths.len();
@@ -842,11 +870,11 @@ pub fn load_and_mix_voice_styles(path1: &str, path2: &str, alpha: f32) -> Result
 }
 
 /// Load TTS components
-pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool) -> Result<TextToSpeech> {
+pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool, ort_threads: usize, xnn_threads: usize) -> Result<TextToSpeech> {
     if use_gpu {
         anyhow::bail!("GPU mode is not supported yet");
     }
-    println!("Using CPU for inference\n");
+    println!("Using CPU for inference with {}|{} threads\n", ort_threads, xnn_threads);
 
     let cfgs = load_cfgs(onnx_dir)?;
 
@@ -855,14 +883,10 @@ pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool) -> Result<TextToSpeech
     let vector_est_path = format!("{}/vector_estimator.onnx", onnx_dir);
     let vocoder_path = format!("{}/vocoder.onnx", onnx_dir);
 
-    let dp_ort = Session::builder()? 
-        .commit_from_file(&dp_path)?;
-    let text_enc_ort = Session::builder()? 
-        .commit_from_file(&text_enc_path)?;
-    let vector_est_ort = Session::builder()? 
-        .commit_from_file(&vector_est_path)?;
-    let vocoder_ort = Session::builder()? 
-        .commit_from_file(&vocoder_path)?;
+    let dp_ort = create_session(&dp_path, false, ort_threads, xnn_threads)?;
+    let text_enc_ort = create_session(&text_enc_path, false, ort_threads, xnn_threads)?;
+    let vector_est_ort = create_session(&vector_est_path, true, ort_threads, xnn_threads)?;
+    let vocoder_ort = create_session(&vocoder_path, true, ort_threads, xnn_threads)?;
 
     let unicode_indexer_path = format!("{}/unicode_indexer.json", onnx_dir);
     let text_processor = UnicodeProcessor::new(&unicode_indexer_path)?;

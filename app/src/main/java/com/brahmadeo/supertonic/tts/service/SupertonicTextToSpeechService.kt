@@ -120,7 +120,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
         val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
-        val selected = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+        val selected = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         val voiceName = if (selected.endsWith(".json")) selected.substringBeforeLast(".") else selected
         
         val language = lang?.lowercase(Locale.ROOT) ?: "en"
@@ -201,7 +201,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         var voiceFile = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {
             requestedVoice.substringAfter("-supertonic-") + ".json"
         } else {
-            prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+            prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         }
 
         val savedLang = prefs.getString("selected_lang", "en") ?: "en"

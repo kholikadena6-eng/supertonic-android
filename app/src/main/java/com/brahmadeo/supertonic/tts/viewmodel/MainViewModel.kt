@@ -14,7 +14,7 @@ class MainViewModel : ViewModel() {
 
     // Settings State
     var currentLang = mutableStateOf("en")
-    var selectedVoiceFile = mutableStateOf("M1.json")
+    var selectedVoiceFile = mutableStateOf("F3.json")
     var selectedVoiceFile2 = mutableStateOf("M2.json")
     var isMixingEnabled = mutableStateOf(false)
     var mixAlpha = mutableFloatStateOf(0.5f)
