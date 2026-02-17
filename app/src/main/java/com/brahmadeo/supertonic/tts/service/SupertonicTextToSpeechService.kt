@@ -120,7 +120,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
         val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
-        val selected = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+        val selected = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         val voiceName = if (selected.endsWith(".json")) selected.substringBeforeLast(".") else selected
         
         val language = lang?.lowercase(Locale.ROOT) ?: "en"
@@ -199,15 +199,23 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         val prefs = getSharedPreferences("SupertonicPrefs", android.content.Context.MODE_PRIVATE)
         
         var voiceFile = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {
-            requestedVoice.substringAfter("-supertonic-") + ".json"
+            val fileName = requestedVoice.substringAfter("-supertonic-")
+            // Sanitize fileName to prevent path traversal
+            File(fileName).name + ".json"
         } else {
-            prefs.getString("selected_voice", "M1.json") ?: "M1.json"
+            prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         }
 
         val savedLang = prefs.getString("selected_lang", "en") ?: "en"
         val modelVersion = if (savedLang == "en") "v1" else "v2"
 
-        var stylePath = File(filesDir, "$modelVersion/voice_styles/$voiceFile").absolutePath
+        val voiceStyleDir = File(filesDir, "$modelVersion/voice_styles")
+        var stylePath = File(voiceStyleDir, voiceFile).absolutePath
+        
+        // Ensure stylePath is within the intended directory
+        if (!File(stylePath).canonicalPath.startsWith(voiceStyleDir.canonicalPath)) {
+            stylePath = File(voiceStyleDir, "F3.json").absolutePath
+        }
         
         // Handle Voice Mixing
         val isMixing = prefs.getBoolean("is_mixing_enabled", false)
