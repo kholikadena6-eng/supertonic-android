@@ -12,6 +12,7 @@ import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.toAbsoluteUrl
+import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -46,22 +47,26 @@ class EbookParser(private val context: Context) {
 
     suspend fun extractText(publication: Publication, link: Link? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            Log.d("EbookParser", "Extracting text for link: ${link?.href}")
+            val startUrl = link?.url()?.toString()
+            val startPath = startUrl?.substringBefore('#')
+            Log.d("EbookParser", "Extracting. Link: ${link?.href}, StartPath: $startPath")
             
-            // Priority 1: Content Service (Experimental but best for semantic text)
+            // Priority 1: Content Service
             val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
             val content = publication.content(locator)
             
             if (content != null) {
                 val chapterText = StringBuilder()
                 val elements = content.elements()
-                val targetHref = link?.url()?.toString()
 
                 for (element in elements) {
-                    // If we have a targetHref, we stop when we leave that resource
-                    if (targetHref != null && element.locator.href.toString() != targetHref) {
+                    val elementUrl = element.locator.href.toString()
+                    val elementPath = elementUrl.substringBefore('#')
+                    
+                    if (startPath != null && elementPath != startPath) {
                         break
                     }
+                    
                     if (element is Content.TextualElement) {
                         element.text?.let { if (it.isNotBlank()) chapterText.append(it).append("\n\n") }
                     }
@@ -69,12 +74,13 @@ class EbookParser(private val context: Context) {
                 
                 val result = chapterText.toString().trim()
                 if (result.isNotBlank()) {
-                    Log.d("EbookParser", "Extracted ${result.length} chars via Content API")
+                    Log.d("EbookParser", "Content API success: ${result.take(50)}...")
                     return@withContext Result.success(result)
                 }
             }
 
-            // Priority 2: Direct Resource Read + HTML Render (Fallback)
+            // Priority 2: Direct Resource Read Fallback
+            Log.d("EbookParser", "Content API failed or blank, using fallback")
             val fullText = StringBuilder()
             if (link != null) {
                 val resource = publication.get(link)
@@ -101,7 +107,6 @@ class EbookParser(private val context: Context) {
 
             val resultText = fullText.toString().trim()
             if (resultText.isNotBlank()) {
-                Log.d("EbookParser", "Extracted ${resultText.length} chars via Resource Fallback")
                 return@withContext Result.success(resultText)
             }
 
@@ -116,18 +121,13 @@ class EbookParser(private val context: Context) {
         if (!html.contains("<html", ignoreCase = true) && !html.contains("<body", ignoreCase = true)) return html
         
         var text = html
-        // Remove style/script/head
         text = text.replace(Regex("<head>.*?</head>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         text = text.replace(Regex("<script.*?>.*?</script>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         text = text.replace(Regex("<style.*?>.*?</style>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         
-        // Block tags to newlines
         text = text.replace(Regex("<(p|div|h[1-6]|li|br|tr|blockquote|title|header|footer).*?>", RegexOption.IGNORE_CASE), "\n")
-        
-        // Strip remaining tags
         text = text.replace(Regex("<[^>]*>"), " ")
         
-        // HTML Entities
         text = text.replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
@@ -139,7 +139,6 @@ class EbookParser(private val context: Context) {
             .replace("&rdquo;", "\"")
             .replace("&ldquo;", "\"")
         
-        // Clean up whitespace: normalize spaces and merge excessive newlines
         return text.split("\n")
             .map { it.trim().replace(Regex("\\s+"), " ") }
             .filter { it.isNotBlank() }
