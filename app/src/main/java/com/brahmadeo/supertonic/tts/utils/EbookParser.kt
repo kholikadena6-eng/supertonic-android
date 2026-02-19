@@ -12,7 +12,10 @@ import org.readium.r2.streamer.parser.DefaultPublicationParser
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.toAbsoluteUrl
 import org.readium.r2.shared.util.Error
+import org.readium.r2.shared.publication.Link
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.services.content.content
+import org.readium.r2.shared.publication.services.content.Content
 import java.io.File
 
 class EbookParser(private val context: Context) {
@@ -22,27 +25,55 @@ class EbookParser(private val context: Context) {
     private val publicationParser = DefaultPublicationParser(context, httpClient, assetRetriever, null)
     private val publicationOpener = PublicationOpener(publicationParser)
 
-    suspend fun parseUri(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun openPublication(uri: Uri): Result<Publication> = withContext(Dispatchers.IO) {
         try {
             val url = uri.toAbsoluteUrl()
-                ?: return@withContext Result.failure<String>(Exception("Failed to convert URI to Readium URL"))
+                ?: return@withContext Result.failure<Publication>(Exception("Failed to convert URI to Readium URL"))
 
             val asset = assetRetriever.retrieve(url).getOrElse { error: Error ->
-                return@withContext Result.failure<String>(Exception("Failed to retrieve asset: ${error.message}"))
+                return@withContext Result.failure<Publication>(Exception("Failed to retrieve asset: ${error.message}"))
             }
 
             val publication = publicationOpener.open(asset, allowUserInteraction = false).getOrElse { error: Error ->
-                return@withContext Result.failure<String>(Exception("Failed to open publication: ${error.message}"))
+                return@withContext Result.failure<Publication>(Exception("Failed to open publication: ${error.message}"))
             }
 
-            val content = publication.content()
+            Result.success(publication)
+        } catch (e: Exception) {
+            Result.failure<Publication>(e)
+        }
+    }
+
+    suspend fun extractText(publication: Publication, link: Link? = null): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
+            val content = publication.content(locator)
             if (content == null) {
                 return@withContext Result.failure<String>(Exception("This publication does not support content extraction."))
             }
 
-            val text = content.text()
-            if (text == null || text.isBlank()) {
-                return@withContext Result.failure<String>(Exception("No text content could be extracted from this publication."))
+            val text = if (link == null) {
+                // Try getting whole text if no link is provided
+                content.elements().filterIsInstance<Content.TextualElement>().joinToString("\n") { it.text ?: "" }
+            } else {
+                val chapterText = StringBuilder()
+                val elements = content.elements()
+                for (element in elements) {
+                    // If we moved to a different resource than the one we started with, stop.
+                    if (element.locator.href != link.url()) break
+                    
+                    if (element is Content.TextualElement) {
+                        val elementText = element.text
+                        if (elementText != null) {
+                            chapterText.append(elementText).append("\n\n")
+                        }
+                    }
+                }
+                chapterText.toString()
+            }
+
+            if (text.isBlank()) {
+                return@withContext Result.failure<String>(Exception("No text content could be extracted."))
             }
 
             Result.success(text)

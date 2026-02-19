@@ -114,23 +114,21 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            viewModel.isInitializing.value = true // Temporary show loading
-            CoroutineScope(Dispatchers.Main).launch {
-                val result = withContext(Dispatchers.IO) {
-                    ebookParser.parseUri(it)
-                }
-                viewModel.isInitializing.value = false
-                result.onSuccess { text ->
-                    if (text.isNotBlank()) {
-                        viewModel.inputText.value = text
-                        Toast.makeText(this@MainActivity, "Ebook parsed successfully", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this@MainActivity, "No text content found in ebook", Toast.LENGTH_SHORT).show()
-                    }
-                }.onFailure { e ->
-                    Log.e("MainActivity", "Failed to parse ebook", e)
-                    Toast.makeText(this@MainActivity, "Error parsing ebook: ${e.message}", Toast.LENGTH_LONG).show()
-                }
+            val intent = Intent(this, EbookOutlineActivity::class.java).apply {
+                putExtra(EbookOutlineActivity.EXTRA_URI, it.toString())
+            }
+            ebookOutlineLauncher.launch(intent)
+        }
+    }
+
+    private val ebookOutlineLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val text = result.data?.getStringExtra(EbookOutlineActivity.EXTRA_TEXT)
+            if (!text.isNullOrEmpty()) {
+                viewModel.inputText.value = text
+                Toast.makeText(this, "Chapter loaded", Toast.LENGTH_SHORT).show()
             }
         }
     }
