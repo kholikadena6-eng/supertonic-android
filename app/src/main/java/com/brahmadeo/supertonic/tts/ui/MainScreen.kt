@@ -60,6 +60,7 @@ fun MainScreen(
     onQueueClick: () -> Unit,
     onLexiconClick: () -> Unit,
     onDeleteV2Click: () -> Unit,
+    onOpenEbookClick: () -> Unit,
     isV2Ready: Boolean,
 
     // Mini Player
@@ -84,6 +85,7 @@ fun MainScreen(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(text = { Text("Reset") }, onClick = { showMenu = false; onResetClick() })
+                        DropdownMenuItem(text = { Text("Open Ebook (EPUB/PDF)") }, onClick = { showMenu = false; onOpenEbookClick() })
                         DropdownMenuItem(text = { Text("Saved Audio") }, onClick = { showMenu = false; onSavedAudioClick() })
                         DropdownMenuItem(text = { Text("History") }, onClick = { showMenu = false; onHistoryClick() })
                         DropdownMenuItem(text = { Text("Queue") }, onClick = { showMenu = false; onQueueClick() })
@@ -308,7 +310,7 @@ fun DropdownSelector(
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .menuAnchor()
                 .fillMaxWidth()
         )
         ExposedDropdownMenu(

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -42,10 +43,12 @@ import androidx.activity.viewModels
 import com.brahmadeo.supertonic.tts.viewmodel.MainViewModel
 import com.brahmadeo.supertonic.tts.ui.DownloadScreen
 import com.brahmadeo.supertonic.tts.utils.AssetManager
+import com.brahmadeo.supertonic.tts.utils.EbookParser
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private lateinit var ebookParser: EbookParser
 
     // Data
     private val languages = mapOf(
@@ -107,6 +110,31 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    private val ebookLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.isInitializing.value = true // Temporary show loading
+            CoroutineScope(Dispatchers.Main).launch {
+                val result = withContext(Dispatchers.IO) {
+                    ebookParser.parseUri(it)
+                }
+                viewModel.isInitializing.value = false
+                result.onSuccess { text ->
+                    if (text.isNotBlank()) {
+                        viewModel.inputText.value = text
+                        Toast.makeText(this@MainActivity, "Ebook parsed successfully", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "No text content found in ebook", Toast.LENGTH_SHORT).show()
+                    }
+                }.onFailure { e ->
+                    Log.e("MainActivity", "Failed to parse ebook", e)
+                    Toast.makeText(this@MainActivity, "Error parsing ebook: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     private val historyLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -127,6 +155,7 @@ class MainActivity : ComponentActivity() {
         val bindIntent = Intent(this, PlaybackService::class.java)
         bindService(bindIntent, connection, Context.BIND_AUTO_CREATE)
 
+        ebookParser = EbookParser(this)
         LexiconManager.load(this)
         QueueManager.initialize(this)
 
@@ -318,6 +347,7 @@ class MainActivity : ComponentActivity() {
                         onQueueClick = { startActivity(Intent(this, QueueActivity::class.java)) },
                         onLexiconClick = { startActivity(Intent(this, LexiconActivity::class.java)) },
                         onDeleteV2Click = { viewModel.showV2DeleteDialog.value = true },
+                        onOpenEbookClick = { ebookLauncher.launch("*/*") },
                         isV2Ready = AssetManager.isV2Ready(this),
 
                         showMiniPlayer = viewModel.showMiniPlayer.value,
