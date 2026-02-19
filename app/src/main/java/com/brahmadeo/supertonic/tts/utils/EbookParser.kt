@@ -29,16 +29,22 @@ class EbookParser(private val context: Context) {
 
     suspend fun openPublication(file: File): Result<Publication> = withContext(Dispatchers.IO) {
         try {
+            Log.d("EbookParser", "Opening file: ${file.absolutePath}, exists: ${file.exists()}, size: ${file.length()}")
+            
             val asset = assetRetriever.retrieve(file).getOrElse { error ->
+                Log.e("EbookParser", "Failed to retrieve asset: ${error.message}")
                 return@withContext Result.failure<Publication>(Exception("Failed to retrieve asset: ${error.message}"))
             }
 
             val publication = publicationOpener.open(asset, allowUserInteraction = false).getOrElse { error ->
+                Log.e("EbookParser", "Failed to open publication: ${error.message}")
                 return@withContext Result.failure<Publication>(Exception("Failed to open publication: ${error.message}"))
             }
 
+            Log.d("EbookParser", "Successfully opened publication: ${publication.metadata.title}")
             Result.success(publication)
         } catch (e: Exception) {
+            Log.e("EbookParser", "Error opening publication", e)
             Result.failure<Publication>(e)
         }
     }
@@ -48,19 +54,24 @@ class EbookParser(private val context: Context) {
             val fullText = StringBuilder()
             
             if (link != null) {
-                // Extract specific chapter
+                Log.d("EbookParser", "Extracting chapter: ${link.href}")
                 val resource = publication.get(link)
                 if (resource == null) {
+                    Log.e("EbookParser", "Resource not found for link: ${link.href}")
                     return@withContext Result.failure<String>(Exception("Resource not found for link: ${link.href}"))
                 }
                 
-                val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
+                val bytes = resource.use { it.read().getOrElse { error -> 
+                    Log.e("EbookParser", "Failed to read resource: ${error.message}")
+                    ByteArray(0) 
+                } }
+                
                 if (bytes.isNotEmpty()) {
                     val text = bytes.decodeToString()
                     fullText.append(renderHtml(text))
                 }
             } else {
-                // Extract whole book
+                Log.d("EbookParser", "Extracting whole book")
                 for (readingLink in publication.readingOrder) {
                     val resource = publication.get(readingLink) ?: continue
                     val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
@@ -77,7 +88,7 @@ class EbookParser(private val context: Context) {
             val resultText = fullText.toString().trim()
 
             if (resultText.isBlank()) {
-                // Last ditch effort: Try Content API if Resource approach failed
+                Log.w("EbookParser", "Extracted text is blank, trying Content API fallback")
                 val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
                 val content = publication.content(locator)
                 if (content != null) {
@@ -97,8 +108,10 @@ class EbookParser(private val context: Context) {
                 return@withContext Result.failure<String>(Exception("No text content could be extracted."))
             }
 
+            Log.d("EbookParser", "Successfully extracted ${resultText.length} characters")
             Result.success(resultText)
         } catch (e: Exception) {
+            Log.e("EbookParser", "Error extracting text", e)
             Result.failure<String>(e)
         }
     }
