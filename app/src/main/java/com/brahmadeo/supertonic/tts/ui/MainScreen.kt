@@ -60,6 +60,7 @@ fun MainScreen(
     onQueueClick: () -> Unit,
     onLexiconClick: () -> Unit,
     onDeleteV2Click: () -> Unit,
+    onOpenEbookClick: () -> Unit,
     isV2Ready: Boolean,
 
     // Mini Player
@@ -84,6 +85,7 @@ fun MainScreen(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(text = { Text("Reset") }, onClick = { showMenu = false; onResetClick() })
+                        DropdownMenuItem(text = { Text("Open Ebook (EPUB/PDF)") }, onClick = { showMenu = false; onOpenEbookClick() })
                         DropdownMenuItem(text = { Text("Saved Audio") }, onClick = { showMenu = false; onSavedAudioClick() })
                         DropdownMenuItem(text = { Text("History") }, onClick = { showMenu = false; onHistoryClick() })
                         DropdownMenuItem(text = { Text("Queue") }, onClick = { showMenu = false; onQueueClick() })
@@ -125,10 +127,13 @@ fun MainScreen(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            val scrollState = rememberScrollState()
+            
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .imePadding() // Shrinks the scrollable area when keyboard is up
+                    .verticalScroll(scrollState)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -147,7 +152,9 @@ fun MainScreen(
                         .fillMaxWidth()
                         .heightIn(min = 200.dp)
                         .onFocusChanged { isFocused = it.isFocused },
-                    maxLines = 10
+                    // Increased maxLines significantly to avoid internal scrolling conflict.
+                    // This makes the cursor stay visible as the whole page scrolls instead.
+                    maxLines = 40 
                 )
 
                 // Controls Card

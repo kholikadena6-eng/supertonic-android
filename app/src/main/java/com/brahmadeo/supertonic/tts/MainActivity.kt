@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -42,10 +43,14 @@ import androidx.activity.viewModels
 import com.brahmadeo.supertonic.tts.viewmodel.MainViewModel
 import com.brahmadeo.supertonic.tts.ui.DownloadScreen
 import com.brahmadeo.supertonic.tts.utils.AssetManager
+import com.brahmadeo.supertonic.tts.utils.EbookParser
+import com.brahmadeo.supertonic.tts.utils.EbookManager
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private lateinit var ebookParser: EbookParser
 
     // Data
     private val languages = mapOf(
@@ -107,6 +112,43 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { }
 
+    private val ebookLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            val localPath = EbookManager.importBook(this, it)
+            if (localPath != null) {
+                val intent = Intent(this, EbookOutlineActivity::class.java).apply {
+                    putExtra(EbookOutlineActivity.EXTRA_URI, localPath)
+                }
+                ebookOutlineLauncher.launch(intent)
+            } else {
+                Toast.makeText(this, "Failed to import book", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private val ebookOutlineLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        Log.d("MainActivity", "ebookOutlineLauncher result: ${result.resultCode}")
+        if (result.resultCode == RESULT_OK) {
+            val text = result.data?.getStringExtra(EbookOutlineActivity.EXTRA_TEXT)
+            Log.d("MainActivity", "Received text length: ${text?.length ?: 0}")
+            if (!text.isNullOrEmpty()) {
+                // Reset state before loading new ebook text
+                viewModel.inputText.value = ""
+                val stopIntent = Intent(this, PlaybackService::class.java).apply { action = "STOP_PLAYBACK" }
+                startService(stopIntent)
+                
+                viewModel.inputText.value = text
+                Toast.makeText(this, "Chapter loaded", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e("MainActivity", "Received empty or null text from ebook activity")
+            }
+        }
+    }
+
     private val historyLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -120,6 +162,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PDFBoxResourceLoader.init(this)
 
         loadPreferences()
         checkNotificationPermission()
@@ -127,6 +170,7 @@ class MainActivity : ComponentActivity() {
         val bindIntent = Intent(this, PlaybackService::class.java)
         bindService(bindIntent, connection, Context.BIND_AUTO_CREATE)
 
+        ebookParser = EbookParser(this)
         LexiconManager.load(this)
         QueueManager.initialize(this)
 
@@ -318,6 +362,19 @@ class MainActivity : ComponentActivity() {
                         onQueueClick = { startActivity(Intent(this, QueueActivity::class.java)) },
                         onLexiconClick = { startActivity(Intent(this, LexiconActivity::class.java)) },
                         onDeleteV2Click = { viewModel.showV2DeleteDialog.value = true },
+                        onOpenEbookClick = { 
+                            try {
+                                if (EbookManager.getRecentBooks(this).isEmpty()) {
+                                    ebookLauncher.launch(arrayOf("application/epub+zip", "application/pdf"))
+                                } else {
+                                    val intent = Intent(this, EbookLibraryActivity::class.java)
+                                    ebookOutlineLauncher.launch(intent)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Failed to open ebook library", e)
+                                ebookLauncher.launch(arrayOf("application/epub+zip", "application/pdf"))
+                            }
+                        },
                         isV2Ready = AssetManager.isV2Ready(this),
 
                         showMiniPlayer = viewModel.showMiniPlayer.value,
@@ -478,9 +535,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    // ... (generateAndPlay, addToQueue, playNow, launchPlaybackActivity, handleIntent, checkResumeState, lifecycle methods same as before) ...
-    // Note: I will include the full file content to ensure no missing braces.
 
     private fun generateAndPlay(text: String) {
         val isReady = if (currentModelVersion == "v1") AssetManager.isV1Ready(this) else AssetManager.isV2Ready(this)
