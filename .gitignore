@@ -15,3 +15,4 @@ app/src/main/jniLibs/
 kls_database.db
 .dual-graph/
 rust/vendor/
+CLAUDE.md
