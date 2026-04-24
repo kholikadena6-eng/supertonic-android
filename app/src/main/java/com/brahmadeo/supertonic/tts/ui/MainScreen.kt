@@ -122,7 +122,14 @@ fun MainScreen(
                 icon = { Icon(painterResource(android.R.drawable.ic_btn_speak_now), contentDescription = null) },
                 expanded = true,
                 containerColor = if (isLoading) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer,
-                contentColor = if (isLoading) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                contentColor = if (isLoading) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.semantics {
+                    contentDescription = "Synthesize and play speech"
+                    stateDescription = buttonText
+                    if (isLoading) {
+                        disabled()
+                    }
+                }
             )
         }
     ) { paddingValues ->
