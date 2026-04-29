@@ -12,9 +12,9 @@ configurations {
 cargo {
     module = "../rust"
     libname = "supertonic_tts"
-    targets = ["arm64"]
+    targets = ["arm64", "arm", "x86", "x86_64"]
     profile = "release"
-    pythonCommand = "python3"
+    pythonCommand = "python"
 
     // F-Droid Fix: Robustly find rustc/cargo
     def home = System.getenv("HOME")
@@ -52,27 +52,27 @@ cargo {
 }
 
 // Task to extract libonnxruntime.so for the Rust build
-task extractOnnxLib(type: Copy) {
+tasks.register('extractOnnxLib', Copy) {
     from {
         zipTree(configurations.onnxRuntime.singleFile)
     }
     into "${project.buildDir}/onnxruntime"
-    include "jni/arm64-v8a/libonnxruntime.so"
+    include "jni/**/libonnxruntime.so"
 }
 
 // Task to manually copy the built Rust library to a location Gradle WILL package
-task copyRustLibs(type: Copy) {
+tasks.register('copyRustLibs', Copy) {
     dependsOn 'cargoBuild'
     from "${project.buildDir}/rustJniLibs/android"
     into "${project.buildDir}/finalJniLibs"
 }
 
 // Configure cargoBuild task
-tasks.whenTaskAdded { task ->
-    if (task.name == 'cargoBuild' || task.name == 'cargoBuildArm64') {
+tasks.configureEach { task ->
+    if (task.name.startsWith('cargoBuild')) {
         task.dependsOn extractOnnxLib
         if (task.hasProperty('environment')) {
-            task.environment 'ORT_LIB_LOCATION', "${project.buildDir}/onnxruntime/jni/arm64-v8a"
+            task.environment 'ORT_LIB_LOCATION', "${project.buildDir}/onnxruntime/jni"
             task.environment 'ORT_SKIP_DOWNLOAD', '1'
         }
     }
@@ -83,8 +83,8 @@ tasks.whenTaskAdded { task ->
 
 android {
     namespace 'com.brahmadeo.supertonic.tts'
-    compileSdk 36
-    ndkVersion "29.0.14206865"
+    compileSdk = 36
+    ndkVersion = "29.0.14206865"
 
     sourceSets {
         main {
@@ -96,21 +96,21 @@ android {
         applicationId "com.brahmadeo.supertonic.tts"
         minSdk 24
         targetSdk 36
-        versionCode 9
-        versionName "2.8.0"
+        versionCode 10
+        versionName "2.8.1"
         
         ndk {
-            abiFilters "arm64-v8a"
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
         }
     }
 
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy.eachDependency { details ->
             if (details.requested.group == 'androidx.media3' && details.requested.name != 'media3-common-ktx') {
                 details.useVersion '1.3.1'
             }
             if (details.requested.group == 'androidx.core' && details.requested.name != 'core-viewtree') {
-                details.useVersion '1.13.1'
+                details.useVersion '1.18.0'
             }
             if (details.requested.group == 'androidx.recyclerview') {
                 details.useVersion '1.3.2'
@@ -134,17 +134,18 @@ android {
     }
     kotlinOptions {
         jvmTarget = '17'
+        freeCompilerArgs += ["-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"]
     }
     buildFeatures {
-        compose true
-        aidl true
+        compose = true
+        aidl = true
     }
     
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true
-            pickFirst 'lib/arm64-v8a/libonnxruntime.so'
-            pickFirst 'lib/arm64-v8a/libsupertonic_tts.so'
+            pickFirst '**/libonnxruntime.so'
+            pickFirst '**/libsupertonic_tts.so'
         }
     }
 }
@@ -154,23 +155,23 @@ afterEvaluate {
 }
 
 dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.2'
-    implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.media:media:1.7.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.13.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.media:media:1.7.1'
 
     // Compose Bridge & Material 3 Expressive
-    def composeBom = platform('androidx.compose:compose-bom:2024.02.00')
+    def composeBom = platform('androidx.compose:compose-bom:2026.04.01')
     implementation composeBom
-    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.activity:activity-compose:1.13.0'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
-    implementation 'androidx.compose.material3:material3:1.4.0-alpha04'
+    implementation 'androidx.compose.material3:material3:1.4.0'
     implementation 'androidx.compose.material:material-icons-extended'
-    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.1'
-    onnxRuntime 'com.microsoft.onnxruntime:onnxruntime-android:1.24.1'
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.25.1'
+    onnxRuntime 'com.microsoft.onnxruntime:onnxruntime-android:1.25.1'
     
     // Readium Toolkit
     implementation ("org.readium.kotlin-toolkit:readium-shared:$readium_version")

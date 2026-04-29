@@ -16,36 +16,31 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.activity.viewModels
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.core.content.ContextCompat
 import com.brahmadeo.supertonic.tts.service.IPlaybackListener
 import com.brahmadeo.supertonic.tts.service.IPlaybackService
 import com.brahmadeo.supertonic.tts.service.PlaybackService
+import com.brahmadeo.supertonic.tts.ui.DownloadScreen
 import com.brahmadeo.supertonic.tts.ui.MainScreen
 import com.brahmadeo.supertonic.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.supertonic.tts.utils.AssetManager
+import com.brahmadeo.supertonic.tts.utils.EbookManager
+import com.brahmadeo.supertonic.tts.utils.EbookParser
 import com.brahmadeo.supertonic.tts.utils.HistoryManager
 import com.brahmadeo.supertonic.tts.utils.LexiconManager
 import com.brahmadeo.supertonic.tts.utils.QueueManager
-import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-
-import androidx.activity.viewModels
 import com.brahmadeo.supertonic.tts.viewmodel.MainViewModel
-import com.brahmadeo.supertonic.tts.ui.DownloadScreen
-import com.brahmadeo.supertonic.tts.utils.AssetManager
-import com.brahmadeo.supertonic.tts.utils.EbookParser
-import com.brahmadeo.supertonic.tts.utils.EbookManager
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -141,12 +136,19 @@ class MainActivity : ComponentActivity() {
                 val stopIntent = Intent(this, PlaybackService::class.java).apply { action = "STOP_PLAYBACK" }
                 startService(stopIntent)
                 
-                viewModel.inputText.value = text
+                viewModel.inputText.value = prepareTextForTts(text)
                 Toast.makeText(this, "Chapter loaded", Toast.LENGTH_SHORT).show()
             } else {
                 Log.e("MainActivity", "Received empty or null text from ebook activity")
             }
         }
+    }
+
+    private fun prepareTextForTts(text: String?): String {
+        if (text.isNullOrEmpty()) return ""
+        val trimmed = text.trim()
+        // Append " ." to prevent diffusion model from cutting off abruptly at the end
+        return if (trimmed.endsWith(" .")) trimmed else "$trimmed ."
     }
 
     private val historyLauncher = registerForActivityResult(
@@ -640,12 +642,12 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrEmpty()) {
-                viewModel.inputText.value = sharedText
+                viewModel.inputText.value = prepareTextForTts(sharedText)
             }
         } else {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: intent.data?.getQueryParameter("text")
             if (!text.isNullOrEmpty()) {
-                viewModel.inputText.value = text
+                viewModel.inputText.value = prepareTextForTts(text)
             }
         }
     }
@@ -678,7 +680,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
