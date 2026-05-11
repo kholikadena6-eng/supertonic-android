@@ -322,8 +322,8 @@ class PlaybackActivity : ComponentActivity() {
         super.onDestroy()
         if (isBound) {
             try {
-                playbackService?.setListener(null)
-            } catch (e: RemoteException) { }
+                playbackService?.removeListener(playbackListenerStub)
+            } catch (e: Exception) { }
             unbindService(connection)
             isBound = false
         }

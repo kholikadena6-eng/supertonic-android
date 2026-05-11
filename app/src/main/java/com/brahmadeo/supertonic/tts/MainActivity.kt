@@ -757,6 +757,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (isBound) {
+            try {
+                playbackService?.removeListener(playbackListener)
+            } catch (_: Exception) { }
             unbindService(connection)
             isBound = false
         }

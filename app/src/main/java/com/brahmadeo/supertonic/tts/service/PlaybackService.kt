@@ -74,6 +74,10 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             this@PlaybackService.setListener(listener)
         }
 
+        override fun removeListener(listener: IPlaybackListener?) {
+            this@PlaybackService.removeListener(listener)
+        }
+
         override fun exportAudio(text: String, lang: String, stylePath: String, speed: Float, steps: Int, outputPath: String) {
             this@PlaybackService.exportAudio(text, lang, stylePath, speed, steps, File(outputPath))
         }
@@ -92,6 +96,12 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                 listener.onStateChanged(isPlaying, audioTrack != null || isSynthesizing, isSynthesizing)
                 listener.onProgress(currentSentenceIndex, -1)
             } catch (_: RemoteException) {}
+        }
+    }
+
+    fun removeListener(listener: IPlaybackListener?) {
+        if (listener != null) {
+            listeners.unregister(listener)
         }
     }
 
