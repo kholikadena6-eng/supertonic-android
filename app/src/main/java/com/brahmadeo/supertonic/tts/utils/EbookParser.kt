@@ -1,8 +1,6 @@
 package com.brahmadeo.supertonic.tts.utils
 
 import android.content.Context
-import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,9 +10,6 @@ import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import org.readium.r2.shared.util.getOrElse
-import org.readium.r2.shared.util.toAbsoluteUrl
-import org.readium.r2.shared.util.Url
-import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.use
@@ -49,7 +44,7 @@ class EbookParser(private val context: Context) {
 
             Result.success(publication)
         } catch (e: Exception) {
-            Result.failure<Publication>(e)
+            Result.failure(e)
         }
     }
 
@@ -85,14 +80,14 @@ class EbookParser(private val context: Context) {
             val fallbackText = extractFallback(publication, link)
             if (fallbackText.isNotBlank()) return@withContext Result.success(fallbackText)
 
-            Result.failure<String>(Exception("No text content could be extracted."))
+            Result.failure(Exception("No text content could be extracted."))
         } catch (e: Exception) {
-            Result.failure<String>(e)
+            Result.failure(e)
         }
     }
 
     suspend fun extractPages(publication: Publication, pageIndices: List<Int>): Result<String> = withContext(Dispatchers.IO) {
-        val isPdf = publication.metadata.conformsTo.contains(org.readium.r2.shared.publication.Publication.Profile.PDF) ||
+        val isPdf = publication.metadata.conformsTo.contains(Publication.Profile.PDF) ||
                     publication.readingOrder.firstOrNull()?.mediaType?.matches(org.readium.r2.shared.util.mediatype.MediaType.PDF) == true
 
         return@withContext extractPagesReadium(publication, pageIndices, isPdf)
@@ -100,7 +95,7 @@ class EbookParser(private val context: Context) {
 
     suspend fun extractPages(file: File, publication: Publication, pageIndices: List<Int>): Result<String> = withContext(Dispatchers.IO) {
         val isPdf = file.extension.lowercase() == "pdf" ||
-                    publication.metadata.conformsTo.contains(org.readium.r2.shared.publication.Publication.Profile.PDF) ||
+                    publication.metadata.conformsTo.contains(Publication.Profile.PDF) ||
                     publication.readingOrder.firstOrNull()?.mediaType?.matches(org.readium.r2.shared.util.mediatype.MediaType.PDF) == true
 
         if (isPdf) {
@@ -130,16 +125,16 @@ class EbookParser(private val context: Context) {
                 if (gutterX > 0) {
                     // 2-column layout detected
                     // Deep header (22%) to ensure spanning titles like "SELECTIVE MEMORY" are caught
-                    val headerHeight = pageSize.height * 0.22f 
-                    val colTop = headerHeight
-                    
+                    val headerHeight = pageSize.height * 0.22f
+
                     // Buffer: Start right column slightly to the left of gutter center 
                     // to avoid clipping the first letter of the right column.
                     val safetyBuffer = pageSize.width * 0.02f 
                     
                     extractor.addRegion("header", RectF(0f, 0f, pageSize.width, headerHeight))
-                    extractor.addRegion("left", RectF(0f, colTop, gutterX, pageSize.height))
-                    extractor.addRegion("right", RectF(gutterX - safetyBuffer, colTop, pageSize.width, pageSize.height))
+                    extractor.addRegion("left", RectF(0f, headerHeight, gutterX, pageSize.height))
+                    extractor.addRegion("right", RectF(gutterX - safetyBuffer,
+                        headerHeight, pageSize.width, pageSize.height))
                     
                     extractor.extractRegions(page)
                     
@@ -174,12 +169,12 @@ class EbookParser(private val context: Context) {
             
             val result = combinedText.toString().trim()
             if (result.isBlank()) {
-                return@withContext Result.failure<String>(Exception("No text found on selected pages via PDFBox."))
+                return@withContext Result.failure(Exception("No text found on selected pages via PDFBox."))
             }
             Result.success(cleanPdfText(result))
         } catch (e: Exception) {
             Log.e("EbookParser", "PDFBox extraction failed", e)
-            Result.failure<String>(e)
+            Result.failure(e)
         } finally {
             try { document?.close() } catch (e: Exception) {}
         }
@@ -295,13 +290,13 @@ class EbookParser(private val context: Context) {
             
             val result = combinedText.toString().trim()
             if (result.isBlank()) {
-                return@withContext Result.failure<String>(Exception("No text found on selected pages."))
+                return@withContext Result.failure(Exception("No text found on selected pages."))
             }
             val finalResult = if (isPdf) cleanPdfText(result) else result
             Result.success(finalResult)
         } catch (e: Exception) {
             Log.e("EbookParser", "Error in extractPagesReadium", e)
-            Result.failure<String>(e)
+            Result.failure(e)
         }
     }
 

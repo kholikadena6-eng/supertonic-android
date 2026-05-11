@@ -40,7 +40,7 @@ fun DownloadScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = if (error != null) error else message,
+                text = error ?: message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center

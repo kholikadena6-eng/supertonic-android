@@ -220,7 +220,7 @@ class EbookOutlineActivity : ComponentActivity() {
         setExtracting: (Boolean) -> Unit
     ) {
         val toc = publication.tableOfContents
-        val links = if (toc.isEmpty()) publication.readingOrder else toc
+        val links = toc.ifEmpty { publication.readingOrder }
         
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(links) { link ->

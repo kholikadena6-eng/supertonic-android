@@ -140,7 +140,7 @@ class PlaybackActivity : ComponentActivity() {
         currentLang = intent.getStringExtra(EXTRA_LANG) ?: "en"
 
         if (intent.getBooleanExtra("is_resume", false) && currentText.isEmpty()) {
-             val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+             val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
              currentText = prefs.getString("last_text", "") ?: ""
              currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
              currentSpeed = prefs.getFloat("last_speed", 1.0f)
@@ -178,13 +178,13 @@ class PlaybackActivity : ComponentActivity() {
         }
 
         val intent = Intent(this, PlaybackService::class.java)
-        bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        bindService(intent, connection, BIND_AUTO_CREATE)
     }
 
     override fun onResume() {
         super.onResume()
         if (intent.getBooleanExtra("is_resume", false)) {
-            val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
             val newText = prefs.getString("last_text", "") ?: ""
             if (newText != currentText) {
                 currentText = newText
@@ -263,7 +263,7 @@ class PlaybackActivity : ComponentActivity() {
     }
 
     private fun saveState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit {
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
             putString("last_text", currentText)
                 .putString("last_voice_path", currentVoicePath)
                 .putFloat("last_speed", currentSpeed)
@@ -274,13 +274,13 @@ class PlaybackActivity : ComponentActivity() {
     }
 
     private fun updateIndexState(index: Int) {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit {
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
             putInt("last_index", index)
         }
     }
 
     private fun clearState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit {
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
             putBoolean("is_playing", false)
         }
     }

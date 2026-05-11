@@ -22,7 +22,6 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.brahmadeo.supertonic.tts.MainActivity
 import com.brahmadeo.supertonic.tts.R
 import com.brahmadeo.supertonic.tts.SupertonicTTS
 import com.brahmadeo.supertonic.tts.utils.QueueItem
@@ -740,7 +739,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW)
-            val manager = attributionContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = attributionContext.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }
