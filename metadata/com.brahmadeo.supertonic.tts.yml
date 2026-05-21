@@ -15,9 +15,9 @@ RepoType: git
 Repo: https://github.com/DevGitPit/supertonic-android
 
 Builds:
-  - versionName: 3.0.1
-    versionCode: 13
-    commit: v3.0.1
+  - versionName: 3.0.2
+    versionCode: 14
+    commit: v3.0.2
     sudo:
       - apt-get update
       - apt-get install -y gcc libc-dev rustup pkg-config libssl-dev
@@ -51,5 +51,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 3.0.1
-CurrentVersionCode: 13
+CurrentVersion: 3.0.2
+CurrentVersionCode: 14

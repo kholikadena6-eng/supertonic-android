@@ -1,7 +1,6 @@
 package com.brahmadeo.supertonic.tts
 
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
@@ -10,9 +9,11 @@ import android.os.IBinder
 import android.os.RemoteException
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.*
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.core.content.edit
 import com.brahmadeo.supertonic.tts.service.IPlaybackListener
 import com.brahmadeo.supertonic.tts.service.IPlaybackService
 import com.brahmadeo.supertonic.tts.service.PlaybackService
@@ -23,7 +24,6 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.core.content.edit
 
 class PlaybackActivity : ComponentActivity() {
 
@@ -311,6 +311,31 @@ class PlaybackActivity : ComponentActivity() {
         } catch (e: RemoteException) { }
     }
 
+    private fun getExportFileName(text: String): String {
+        val cleanText = text.trim()
+        if (cleanText.isEmpty()) {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            return "Supertonic_TTS_$timestamp.wav"
+        }
+        
+        // Split by whitespace and grab up to 5 words
+        val words = cleanText.split(Regex("\\s+")).take(5)
+        
+        // Sanitize each word to allow only alphanumeric characters
+        val sanitizedWords = words.map { word ->
+            word.filter { it.isLetterOrDigit() }
+        }.filter { it.isNotEmpty() }
+        
+        val baseName = if (sanitizedWords.isEmpty()) {
+            "Supertonic_TTS"
+        } else {
+            sanitizedWords.joinToString("_")
+        }
+        
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        return "${baseName}_$timestamp.wav"
+    }
+
     private fun startExport() {
         if (currentText.isEmpty()) {
             Toast.makeText(this, "No text to save", Toast.LENGTH_SHORT).show()
@@ -321,8 +346,7 @@ class PlaybackActivity : ComponentActivity() {
         exportTotalState.intValue = sentencesState.value.size
         isExportingState.value = true
 
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val filename = "Supertonic_TTS_$timestamp.wav"
+        val filename = getExportFileName(currentText)
         val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
         val appDir = File(musicDir, "Supertonic Audio")
         if (!appDir.exists()) appDir.mkdirs()
