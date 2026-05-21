@@ -113,16 +113,155 @@ impl UnicodeProcessor {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum QuoteType {
+    Opening,
+    Closing,
+    Ambiguous,
+}
+
+fn classify_quote(chars: &[char], i: usize) -> QuoteType {
+    if chars.is_empty() || i >= chars.len() {
+        return QuoteType::Ambiguous;
+    }
+    
+    let has_before = i > 0;
+    let has_after = i + 1 < chars.len();
+    
+    let char_before = if has_before { Some(chars[i - 1]) } else { None };
+    let char_after = if has_after { Some(chars[i + 1]) } else { None };
+    
+    let before_is_ws = char_before.map_or(true, |c| c.is_whitespace());
+    let after_is_ws = char_after.map_or(true, |c| c.is_whitespace());
+    
+    // Check for opening punctuation/symbols that typically precede opening quotes.
+    // Redundant brackets [ and underscore _ are not checked because they are replaced earlier.
+    let before_is_open_punc = char_before.map_or(false, |c| "({,:-¿¡「『【〈《‹«".contains(c));
+    
+    // Check for closing punctuation/symbols that typically follow closing quotes.
+    // Redundant bracket ] and backslash are not checked because they are replaced/removed earlier.
+    let after_is_close_punc = char_after.map_or(false, |c| ")}.,!?:;-…。」』】〉》›»".contains(c));
+
+    let is_opening = (before_is_ws || before_is_open_punc) && !after_is_ws;
+    let is_closing = (after_is_ws || after_is_close_punc) && !before_is_ws;
+
+    if is_opening && !is_closing {
+        QuoteType::Opening
+    } else if is_closing && !is_opening {
+        QuoteType::Closing
+    } else {
+        QuoteType::Ambiguous
+    }
+}
+
+fn remove_unmatched_quotes(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut to_remove = std::collections::HashSet::new();
+
+    // 1. Process double quotes '"'
+    let mut double_quotes = Vec::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '"' {
+            double_quotes.push(i);
+        }
+    }
+
+    if double_quotes.len() % 2 != 0 {
+        let mut open_stack = Vec::new();
+        for &idx in &double_quotes {
+            let q_type = classify_quote(&chars, idx);
+            match q_type {
+                QuoteType::Opening => {
+                    open_stack.push(idx);
+                }
+                QuoteType::Closing => {
+                    if open_stack.is_empty() {
+                        to_remove.insert(idx);
+                    } else {
+                        open_stack.pop();
+                    }
+                }
+                QuoteType::Ambiguous => {
+                    if open_stack.is_empty() {
+                        open_stack.push(idx);
+                    } else {
+                        open_stack.pop();
+                    }
+                }
+            }
+        }
+        // Any remaining open quotes are unmatched
+        for idx in open_stack {
+            to_remove.insert(idx);
+        }
+    }
+
+    // 2. Process single quotes '\'' (excluding internal apostrophes)
+    let mut single_quotes = Vec::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c == '\'' {
+            // Check if it is an internal apostrophe
+            let is_internal = if i > 0 && i + 1 < chars.len() {
+                chars[i - 1].is_alphanumeric() && chars[i + 1].is_alphanumeric()
+            } else {
+                false
+            };
+            if !is_internal {
+                single_quotes.push(i);
+            }
+        }
+    }
+
+    if single_quotes.len() % 2 != 0 {
+        let mut open_stack = Vec::new();
+        for &idx in &single_quotes {
+            let q_type = classify_quote(&chars, idx);
+            match q_type {
+                QuoteType::Opening => {
+                    open_stack.push(idx);
+                }
+                QuoteType::Closing => {
+                    if open_stack.is_empty() {
+                        to_remove.insert(idx);
+                    } else {
+                        open_stack.pop();
+                    }
+                }
+                QuoteType::Ambiguous => {
+                    if open_stack.is_empty() {
+                        open_stack.push(idx);
+                    } else {
+                        open_stack.pop();
+                    }
+                }
+            }
+        }
+        // Any remaining open quotes are unmatched
+        for idx in open_stack {
+            to_remove.insert(idx);
+        }
+    }
+
+    // Reconstruct string without the marked indices
+    let mut result = String::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if !to_remove.contains(&i) {
+            result.push(c);
+        }
+    }
+    result
+}
+
 pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
     // Revert to NFKD normalization as required for Korean Jamo decomposition
     let mut text: String = text.nfkd().collect();
 
-    if lang == "en" {
-        // Remove emojis (wide Unicode range)
-    let emoji_pattern = Regex::new(r"[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{1F700}-\x{1F77F}\x{1F780}-\x{1F7FF}\x{1F800}-\x{1F8FF}\x{1F900}-\x{1F9FF}\x{1FA00}-\x{1FA6F}\x{1FA70}-\x{1FAFF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F1E6}-\x{1F1FF}]+").unwrap();
+    // 1. Remove emojis (wide Unicode range) - Safe for all languages
+    static EMOJI_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let emoji_pattern = EMOJI_RE.get_or_init(|| Regex::new(r"[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{1F700}-\x{1F77F}\x{1F780}-\x{1F7FF}\x{1F800}-\x{1F8FF}\x{1F900}-\x{1F9FF}\x{1FA00}-\x{1FA6F}\x{1FA70}-\x{1FAFF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F1E6}-\x{1F1FF}]+").unwrap());
     text = emoji_pattern.replace_all(&text, "").to_string();
 
-    // Replace various dashes and symbols
+    // 2. Replace typographic quotes, dashes, and brackets - Safe for all languages
     let replacements = [
         ("–", "-"),      // en dash
         ("‑", "-"),      // non-breaking hyphen
@@ -147,31 +286,34 @@ pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
         text = text.replace(from, to);
     }
 
-    // Remove special symbols
+    // 3. Remove special symbols - Safe for all languages
     let special_symbols = ["♥", "☆", "♡", "©", "\\"];
     for symbol in &special_symbols {
         text = text.replace(symbol, "");
     }
 
-    // Replace known expressions
-    let expr_replacements = [
-        ("@", " at "),
-        ("e.g.,", "for example, "),
-        ("i.e.,", "that is, "),
-    ];
+    // 4. English-specific expression replacements
+    if lang == "en" {
+        let expr_replacements = [
+            ("@", " at "),
+            ("e.g.,", "for example, "),
+            ("i.e.,", "that is, "),
+        ];
 
-    for (from, to) in &expr_replacements {
-        text = text.replace(from, to);
+        for (from, to) in &expr_replacements {
+            text = text.replace(from, to);
+        }
     }
 
-    // Fix spacing around punctuation
-    text = Regex::new(r" , ").unwrap().replace_all(&text, ",").to_string();
-    text = Regex::new(r" \. ").unwrap().replace_all(&text, ".").to_string();
-    text = Regex::new(r" ! ").unwrap().replace_all(&text, "!").to_string();
-    text = Regex::new(r" \? ").unwrap().replace_all(&text, "?").to_string();
-    text = Regex::new(r" ; ").unwrap().replace_all(&text, ";").to_string();
-    text = Regex::new(r" : ").unwrap().replace_all(&text, ":").to_string();
-    text = Regex::new(r" ' ").unwrap().replace_all(&text, "'").to_string();
+    // 5. Spacing around punctuation - Safe for all languages
+    // OPTIMIZATION: Use fast string replacements instead of expensive regex compilations
+    text = text.replace(" , ", ",");
+    text = text.replace(" . ", ".");
+    text = text.replace(" ! ", "!");
+    text = text.replace(" ? ", "?");
+    text = text.replace(" ; ", ";");
+    text = text.replace(" : ", ":");
+    text = text.replace(" ' ", "'");
 
     // Remove duplicate quotes
     while text.contains("\"\"") {
@@ -185,16 +327,21 @@ pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
     }
 
     // Remove extra spaces
-    text = Regex::new(r"\s+").unwrap().replace_all(&text, " ").to_string();
+    static WHITESPACE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let whitespace_re = WHITESPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap());
+    text = whitespace_re.replace_all(&text, " ").to_string();
     text = text.trim().to_string();
 
-    // If text doesn't end with punctuation, quotes, or closing brackets, add a period
-    if !text.is_empty() {
-        let ends_with_punct = Regex::new(r#"[.!?;:,'"\u{201C}\u{201D}\u{2018}\u{2019})\\]}…。」』】〉》›»]$"#).unwrap();
+    // Remove unmatched double/single quotes to avoid breaking model on text chunk splits
+    text = remove_unmatched_quotes(&text);
+
+    // 6. Ending punctuation check - Safe for all languages except Korean
+    if !text.is_empty() && lang != "ko" {
+        static ENDS_WITH_PUNCT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        let ends_with_punct = ENDS_WITH_PUNCT_RE.get_or_init(|| Regex::new(r#"[.!?;:,'"\u{201C}\u{201D}\u{2018}\u{2019})\\\]}…。」』】〉》›»]$"#).unwrap());
         if !ends_with_punct.is_match(&text) {
             text.push('.');
         }
-    }
     }
 
     // Wrap text with language tags - V2 needs tags, V1 (English) does not
@@ -250,8 +397,8 @@ pub fn sample_noisy_latent(
 
     let mut noisy_latent = Array3::<f32>::zeros((bsz, latent_dim_val, latent_len));
 
-    // Reduced temperature (0.667) improves stability and reduces word skipping/hallucinations
-    let normal = Normal::new(0.0, 0.667).unwrap();
+    // Standard temperature (1.0) for the diffusion sampling process
+    let normal = Normal::new(0.0, 1.0).unwrap();
     let mut rng = rand::thread_rng();
 
     for b in 0..bsz {
@@ -331,7 +478,8 @@ pub fn chunk_text(text: &str, max_len: Option<usize>) -> Vec<String> {
     }
 
     // Split by paragraphs
-    let para_re = Regex::new(r"\n\s*\n").unwrap();
+    static PARA_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let para_re = PARA_RE.get_or_init(|| Regex::new(r"\n\s*\n").unwrap());
     let paragraphs: Vec<&str> = para_re.split(text).collect();
     let mut chunks = Vec::new();
 
@@ -445,12 +593,8 @@ pub fn chunk_text(text: &str, max_len: Option<usize>) -> Vec<String> {
 }
 
 fn split_sentences(text: &str) -> Vec<String> {
-    // Rust's regex doesn't support lookbehind, so we use a simpler approach
-    // Split on sentence boundaries (., !, ?, ;) followed by optional quote/bracket and space
-    // Added support for:
-    // - Semicolon (;) as splitter
-    // - Optional closing quotes/brackets after punctuation
-    let re = Regex::new(r"([.!?]['\u{2019}\u{201D}\u{0022}\)\}\]]?)\s+").unwrap();
+    static SENTENCE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let re = SENTENCE_RE.get_or_init(|| Regex::new(r"([.!?]['\u{2019}\u{201D}\u{0022}\)\}\]]?)\s+").unwrap());
 
     // Find all matches
     let matches: Vec<_> = re.find_iter(text).collect();
@@ -913,3 +1057,115 @@ pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool, use_xnnpack: bool, ort
         vocoder_ort,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_preprocess_text_french_apostrophe() {
+        // Test with right-single-quote (typographic apostrophe U+2019)
+        let input_typographic = "l’oiseau s’envole";
+        let result_typographic = preprocess_text(input_typographic, "fr").unwrap();
+        assert_eq!(result_typographic, "<fr>l'oiseau s'envole.</fr>");
+
+        // Test with straight apostrophe U+0027
+        let input_straight = "l'oiseau s'envole";
+        let result_straight = preprocess_text(input_straight, "fr").unwrap();
+        assert_eq!(result_straight, "<fr>l'oiseau s'envole.</fr>");
+    }
+
+    #[test]
+    fn test_preprocess_text_english_normalization() {
+        // Test English-specific expansion and ending punctuation
+        let input = "hello @ world";
+        let result = preprocess_text(input, "en").unwrap();
+        assert_eq!(result, "hello at world.");
+
+        // Test if a trailing period is correctly preserved without duplication
+        let input_period = "hello world.";
+        let result_period = preprocess_text(input_period, "en").unwrap();
+        assert_eq!(result_period, "hello world.");
+    }
+
+    #[test]
+    fn test_preprocess_text_korean_no_period() {
+        // Test Korean text normalization - it should not have trailing period
+        let input = "안녕하세요";
+        let result = preprocess_text(input, "ko").unwrap();
+        assert!(!result.contains('.'));
+        assert!(result.starts_with("<ko>"));
+        assert!(result.ends_with("</ko>"));
+    }
+
+    #[test]
+    fn test_remove_unmatched_quotes() {
+        // Test unmatched double quote at start
+        let input_double_start = "\"I wanted to go to the store,";
+        assert_eq!(remove_unmatched_quotes(input_double_start), "I wanted to go to the store,");
+
+        // Test unmatched double quote at end
+        let input_double_end = "He talked to her first.\"";
+        assert_eq!(remove_unmatched_quotes(input_double_end), "He talked to her first.");
+
+        // Test unmatched double quote in text split with other matched quotes
+        let input_mixed = "He talked to her first.\" \"Yes, he did.\"";
+        assert_eq!(remove_unmatched_quotes(input_mixed), "He talked to her first. \"Yes, he did.\"");
+
+        // Test fully balanced double quotes (should not modify)
+        let input_balanced = "\"He talked to her first.\"";
+        assert_eq!(remove_unmatched_quotes(input_balanced), "\"He talked to her first.\"");
+
+        // Test unmatched single quote at start
+        let input_single_start = "'I wanted to go to the store,";
+        assert_eq!(remove_unmatched_quotes(input_single_start), "I wanted to go to the store,");
+
+        // Test unmatched single quote at end
+        let input_single_end = "He talked to her first.'";
+        assert_eq!(remove_unmatched_quotes(input_single_end), "He talked to her first.");
+
+        // Test that internal apostrophes are NOT removed/touched
+        let input_apostrophes = "don't l'oiseau s'envole";
+        assert_eq!(remove_unmatched_quotes(input_apostrophes), "don't l'oiseau s'envole");
+
+        // Test combined unmatched single quotes with apostrophes
+        let input_apostrophes_unmatched = "'don't l'oiseau s'envole";
+        assert_eq!(remove_unmatched_quotes(input_apostrophes_unmatched), "don't l'oiseau s'envole");
+
+        // Test user's specific chunk 1 and chunk 2 split example
+        let chunk1 = "Fletcher was silent for a moment, then he said, \"The big guy who was riding with Gibson. Who is he?\" \"No Idea.\" \"He doesn't have ID?\" \"No.\" \"Any luggage? A backpack at least?\" \"Just this.\" Vidic took a pistol from his waistband and handed it to Fletcher. \"A Glock 17. The FBI's weapon of choice.";
+        let chunk1_expected = "Fletcher was silent for a moment, then he said, \"The big guy who was riding with Gibson. Who is he?\" \"No Idea.\" \"He doesn't have ID?\" \"No.\" \"Any luggage? A backpack at least?\" \"Just this.\" Vidic took a pistol from his waistband and handed it to Fletcher. A Glock 17. The FBI's weapon of choice.";
+        assert_eq!(remove_unmatched_quotes(chunk1), chunk1_expected);
+
+        let chunk2 = "Make of that what you will.\"";
+        let chunk2_expected = "Make of that what you will.";
+        assert_eq!(remove_unmatched_quotes(chunk2), chunk2_expected);
+
+        // Test quote classification heuristic fixes (comma as prefix, opening parenthesis as suffix/next boundary)
+        let test_comma_prefix = "said, \"Hello\" \"World";
+        // Under correct classification:
+        // - "Hello" is balanced (quote 1 is opening, quote 2 is closing).
+        // - "World" is unmatched (only opening quote), so it gets stripped.
+        assert_eq!(remove_unmatched_quotes(test_comma_prefix), "said, \"Hello\" World");
+
+        let test_paren_suffix = "\"Hello\"( \"World";
+        // Under correct classification:
+        // - "Hello" is balanced (quote 2 is followed by ( but is closing, quote 1 is opening).
+        // - "World" is unmatched (only opening quote), so it gets stripped.
+        assert_eq!(remove_unmatched_quotes(test_paren_suffix), "\"Hello\"( World");
+    }
+
+    #[test]
+    fn test_preprocess_text_unmatched_quotes() {
+        // Test double quote cleanup in preprocess_text
+        let input = "He talked to her first.\"";
+        let result = preprocess_text(input, "en").unwrap();
+        assert_eq!(result, "He talked to her first.");
+
+        // Test single quote cleanup in preprocess_text
+        let input_single = "He talked to her first.'";
+        let result_single = preprocess_text(input_single, "en").unwrap();
+        assert_eq!(result_single, "He talked to her first.");
+    }
+}
+
