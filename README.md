@@ -27,7 +27,7 @@ To add or improve support for a language, follow these steps:
 
 Text normalization prevents the engine from reading symbols literally (e.g. pronouncing "3" as English "three" instead of Hindi "तीन").
 
-- **Path:** [`app/src/main/java/com/brahmadeo/supertonic/tts/utils/TextNormalizer.kt`](file:///C:/Users/panka/StudioProjects/supertonic-android/app/src/main/java/com/brahmadeo/supertonic/tts/utils/TextNormalizer.kt)
+- **Path:** [`app/src/main/java/com/brahmadeo/supertonic/tts/utils/TextNormalizer.kt`](app/src/main/java/com/brahmadeo/supertonic/tts/utils/TextNormalizer.kt)
 - **Action:** Add a routing check for your language prefix inside the `normalize` function, and implement your language-specific normalization logic:
 
 ```kotlin
@@ -60,7 +60,7 @@ private fun normalizeHindi(text: String): String {
 
 ### 2. Number to Word Expansion (Kotlin)
 
-- **Path:** [`app/src/main/java/com/brahmadeo/supertonic/tts/utils/NumberUtils.kt`](file:///C:/Users/panka/StudioProjects/supertonic-android/app/src/main/java/com/brahmadeo/supertonic/tts/utils/NumberUtils.kt)
+- **Path:** [`app/src/main/java/com/brahmadeo/supertonic/tts/utils/NumberUtils.kt`](app/src/main/java/com/brahmadeo/supertonic/tts/utils/NumberUtils.kt)
 - **Action:** Implement utility functions to convert integer and decimal values into spoken words:
 
 ```kotlin
@@ -74,7 +74,7 @@ fun convertHindiDouble(d: Double): String
 The JNI layer delegates text chunking to Rust, ensuring the display UI in `PlaybackActivity` matches the underlying audio chunks.
 
 - **Paths:** 
-  - [`rust/src/lang/mod.rs`](file:///C:/Users/panka/StudioProjects/supertonic-android/rust/src/lang/mod.rs) (Language Normalizer Registry)
+  - [`rust/src/lang/mod.rs`](rust/src/lang/mod.rs) (Language Normalizer Registry)
   - `rust/src/lang/<lang_code>.rs` (Language normalizer implementation)
   - `rust/src/lang/configs/<lang_code>.json` (JSON config for abbreviations)
 - **Action:** 
@@ -94,8 +94,8 @@ The JNI layer delegates text chunking to Rust, ensuring the display UI in `Playb
 ### 4. Language Selection UI and Resources (Kotlin)
 
 - **Paths:**
-  - [`app/src/main/res/values/strings.xml`](file:///C:/Users/panka/StudioProjects/supertonic-android/app/src/main/res/values/strings.xml)
-  - [`app/src/main/java/com/brahmadeo/supertonic/tts/MainActivity.kt`](file:///C:/Users/panka/StudioProjects/supertonic-android/app/src/main/java/com/brahmadeo/supertonic/tts/MainActivity.kt)
+  - [`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml)
+  - [`app/src/main/java/com/brahmadeo/supertonic/tts/MainActivity.kt`](app/src/main/java/com/brahmadeo/supertonic/tts/MainActivity.kt)
 - **Action:**
   1. Declare the language display string in `strings.xml`:
      ```xml
@@ -110,7 +110,7 @@ The JNI layer delegates text chunking to Rust, ensuring the display UI in `Playb
 
 Always write tests for the normalization expansions and chunking rules to prevent regressions.
 
-- **Kotlin Tests Path:** [`app/src/test/java/com/brahmadeo/supertonic/tts/utils/TextNormalizerTest.kt`](file:///C:/Users/panka/StudioProjects/supertonic-android/app/src/test/java/com/brahmadeo/supertonic/tts/utils/TextNormalizerTest.kt)
+- **Kotlin Tests Path:** [`app/src/test/java/com/brahmadeo/supertonic/tts/utils/TextNormalizerTest.kt`](app/src/test/java/com/brahmadeo/supertonic/tts/utils/TextNormalizerTest.kt)
 - **Run Rust Tests:**
   ```bash
   cd rust

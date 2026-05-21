@@ -721,11 +721,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun generateAndPlay(text: String) {
-        val isReady = when (currentModelVersion) {
-            "v1" -> AssetManager.isV1Ready(this)
-            "v2" -> AssetManager.isV2Ready(this)
-            else -> AssetManager.isV3Ready(this)
-        }
+        val isReady = AssetManager.isVersionReady(this, currentModelVersion)
         if (!isReady) {
             startDownload(currentModelVersion)
             return
@@ -766,11 +762,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun addToQueue(text: String) {
-        val isReady = when (currentModelVersion) {
-            "v1" -> AssetManager.isV1Ready(this)
-            "v2" -> AssetManager.isV2Ready(this)
-            else -> AssetManager.isV3Ready(this)
-        }
+        val isReady = AssetManager.isVersionReady(this, currentModelVersion)
         if (!isReady) {
             startDownload(currentModelVersion)
             return
@@ -800,11 +792,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun playNow(text: String) {
-        val isReady = when (currentModelVersion) {
-            "v1" -> AssetManager.isV1Ready(this)
-            "v2" -> AssetManager.isV2Ready(this)
-            else -> AssetManager.isV3Ready(this)
-        }
+        val isReady = AssetManager.isVersionReady(this, currentModelVersion)
         if (!isReady) {
             startDownload(currentModelVersion)
             return

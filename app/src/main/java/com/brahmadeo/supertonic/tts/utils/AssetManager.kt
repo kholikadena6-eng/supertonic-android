@@ -53,6 +53,15 @@ object AssetManager {
     fun isV2Ready(context: Context): Boolean = checkReady(context, "v2", V2_FILES)
     fun isV3Ready(context: Context): Boolean = checkReady(context, "v3", V3_FILES)
 
+    fun isVersionReady(context: Context, version: String): Boolean {
+        return when (version) {
+            "v1" -> isV1Ready(context)
+            "v2" -> isV2Ready(context)
+            "v3" -> isV3Ready(context)
+            else -> false
+        }
+    }
+
     private fun checkReady(context: Context, version: String, files: List<String>): Boolean {
         val baseDir = File(context.filesDir, version)
         if (!baseDir.exists()) return false

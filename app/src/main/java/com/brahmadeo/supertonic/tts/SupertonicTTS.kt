@@ -12,6 +12,10 @@ object SupertonicTTS {
     private val JAPANESE_SPLIT_PATTERN = Pattern.compile("([。！？][」』）』）｝\\]]?)\\s*")
     private val DEFAULT_SPLIT_PATTERN = Pattern.compile("([.!?]['\\u2019\\u201D\\u0022)}\\]]?)\\s+")
 
+    private val PARAGRAPH_REGEX = Regex("\\n\\s*\\n")
+    private val COMMA_REGEX = Regex("[,\\u3001]")
+    private val WHITESPACE_REGEX = Regex("\\s+")
+
     init {
         try {
             System.loadLibrary("onnxruntime")
@@ -187,11 +191,7 @@ object SupertonicTTS {
         } catch (e: Exception) {
             fallbackChunkText(text, lang)
         }
-        return if (joined.isEmpty()) {
-            listOf("")
-        } else {
-            joined.split("\u001E")
-        }
+        return joined.split("\u001E")
     }
 
     private fun fallbackChunkText(text: String, lang: String): String {
@@ -249,7 +249,7 @@ object SupertonicTTS {
         
         // Basic paragraph split as a high-level wrapper
         // If there are multiple paragraphs, split them first
-        val paragraphs = trimmed.split(Regex("\\n\\s*\\n"))
+        val paragraphs = trimmed.split(PARAGRAPH_REGEX)
         if (paragraphs.size > 1) {
             return paragraphs.flatMap { para -> 
                 val subJoined = fallbackChunkText(para, lang)
@@ -278,18 +278,17 @@ object SupertonicTTS {
                 }
                 
                 // Split long sentences by comma or space
-                val commaRegex = Regex("[,\\u3001]")
-                val parts = s.split(commaRegex)
+                val parts = s.split(COMMA_REGEX)
                 for (part in parts) {
                     val p = part.trim()
                     if (p.isEmpty()) continue
                     
                     if (p.length > maxChunkLen) {
                         // Word-level split as last resort
-                        val words = if (normalizedLang.startsWith("ja") && !p.contains(Regex("\\s+"))) {
+                        val words = if (normalizedLang.startsWith("ja") && !p.contains(WHITESPACE_REGEX)) {
                             p.map { it.toString() }
                         } else {
-                            p.split(Regex("\\s+"))
+                            p.split(WHITESPACE_REGEX)
                         }
                         val wordChunk = StringBuilder()
                         for (word in words) {
