@@ -286,7 +286,11 @@ object SupertonicTTS {
                     
                     if (p.length > maxChunkLen) {
                         // Word-level split as last resort
-                        val words = p.split(Regex("\\s+"))
+                        val words = if (normalizedLang.startsWith("ja") && !p.contains(Regex("\\s+"))) {
+                            p.map { it.toString() }
+                        } else {
+                            p.split(Regex("\\s+"))
+                        }
                         val wordChunk = StringBuilder()
                         for (word in words) {
                             if (wordChunk.length + word.length + 1 > maxChunkLen && wordChunk.isNotEmpty()) {

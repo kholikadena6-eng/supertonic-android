@@ -14,6 +14,9 @@ object NumberUtils {
 
     fun convert(n: Long): String {
         if (n < 0) {
+            if (n == Long.MIN_VALUE) {
+                return "minus " + convert(-(n / 1000000000)) + " billion" + (if (n % 1000000000 != 0L) " " + convert(-(n % 1000000000)) else "")
+            }
             return "minus " + convert(-n)
         }
         if (n == 0L) {
@@ -69,6 +72,9 @@ object NumberUtils {
 
     fun convertHindi(n: Long): String {
         if (n < 0) {
+            if (n == Long.MIN_VALUE) {
+                return "माइनस " + convertHindi(-(n / 10000000)) + " करोड़" + (if (n % 10000000 != 0L) " " + convertHindi(-(n % 10000000)) else "")
+            }
             return "माइनस " + convertHindi(-n)
         }
         if (n == 0L) {
