@@ -117,12 +117,11 @@ pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
     // Revert to NFKD normalization as required for Korean Jamo decomposition
     let mut text: String = text.nfkd().collect();
 
-    if lang == "en" {
-        // Remove emojis (wide Unicode range)
+    // 1. Remove emojis (wide Unicode range) - Safe for all languages
     let emoji_pattern = Regex::new(r"[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{1F700}-\x{1F77F}\x{1F780}-\x{1F7FF}\x{1F800}-\x{1F8FF}\x{1F900}-\x{1F9FF}\x{1FA00}-\x{1FA6F}\x{1FA70}-\x{1FAFF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F1E6}-\x{1F1FF}]+").unwrap();
     text = emoji_pattern.replace_all(&text, "").to_string();
 
-    // Replace various dashes and symbols
+    // 2. Replace typographic quotes, dashes, and brackets - Safe for all languages
     let replacements = [
         ("–", "-"),      // en dash
         ("‑", "-"),      // non-breaking hyphen
@@ -147,24 +146,26 @@ pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
         text = text.replace(from, to);
     }
 
-    // Remove special symbols
+    // 3. Remove special symbols - Safe for all languages
     let special_symbols = ["♥", "☆", "♡", "©", "\\"];
     for symbol in &special_symbols {
         text = text.replace(symbol, "");
     }
 
-    // Replace known expressions
-    let expr_replacements = [
-        ("@", " at "),
-        ("e.g.,", "for example, "),
-        ("i.e.,", "that is, "),
-    ];
+    // 4. English-specific expression replacements
+    if lang == "en" {
+        let expr_replacements = [
+            ("@", " at "),
+            ("e.g.,", "for example, "),
+            ("i.e.,", "that is, "),
+        ];
 
-    for (from, to) in &expr_replacements {
-        text = text.replace(from, to);
+        for (from, to) in &expr_replacements {
+            text = text.replace(from, to);
+        }
     }
 
-    // Fix spacing around punctuation
+    // 5. Spacing around punctuation - Safe for all languages
     text = Regex::new(r" , ").unwrap().replace_all(&text, ",").to_string();
     text = Regex::new(r" \. ").unwrap().replace_all(&text, ".").to_string();
     text = Regex::new(r" ! ").unwrap().replace_all(&text, "!").to_string();
@@ -188,13 +189,12 @@ pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
     text = Regex::new(r"\s+").unwrap().replace_all(&text, " ").to_string();
     text = text.trim().to_string();
 
-    // If text doesn't end with punctuation, quotes, or closing brackets, add a period
-    if !text.is_empty() {
+    // 6. Ending punctuation check - Safe for all languages except Korean
+    if !text.is_empty() && lang != "ko" {
         let ends_with_punct = Regex::new(r#"[.!?;:,'"\u{201C}\u{201D}\u{2018}\u{2019})\\]}…。」』】〉》›»]$"#).unwrap();
         if !ends_with_punct.is_match(&text) {
             text.push('.');
         }
-    }
     }
 
     // Wrap text with language tags - V2 needs tags, V1 (English) does not
@@ -913,3 +913,40 @@ pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool, use_xnnpack: bool, ort
         vocoder_ort,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_preprocess_text_french_apostrophe() {
+        // Test with right-single-quote (typographic apostrophe U+2019)
+        let input_typographic = "l’oiseau s’envole";
+        let result_typographic = preprocess_text(input_typographic, "fr").unwrap();
+        assert_eq!(result_typographic, "<fr>l'oiseau s'envole.</fr>");
+
+        // Test with straight apostrophe U+0027
+        let input_straight = "l'oiseau s'envole";
+        let result_straight = preprocess_text(input_straight, "fr").unwrap();
+        assert_eq!(result_straight, "<fr>l'oiseau s'envole.</fr>");
+    }
+
+    #[test]
+    fn test_preprocess_text_english_normalization() {
+        // Test English-specific expansion and ending punctuation
+        let input = "hello @ world";
+        let result = preprocess_text(input, "en").unwrap();
+        assert_eq!(result, "hello at world.");
+    }
+
+    #[test]
+    fn test_preprocess_text_korean_no_period() {
+        // Test Korean text normalization - it should not have trailing period
+        let input = "안녕하세요";
+        let result = preprocess_text(input, "ko").unwrap();
+        assert!(!result.contains('.'));
+        assert!(result.starts_with("<ko>"));
+        assert!(result.ends_with("</ko>"));
+    }
+}
+
