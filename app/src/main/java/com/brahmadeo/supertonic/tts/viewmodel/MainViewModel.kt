@@ -83,6 +83,7 @@ class MainViewModel : ViewModel() {
                 isDownloading.value = false
                 onComplete(version)
             } catch (e: Exception) {
+                isDownloading.value = false // Allow UI to show error and retry
                 downloadError.value = e.message ?: "Unknown error"
             }
         }

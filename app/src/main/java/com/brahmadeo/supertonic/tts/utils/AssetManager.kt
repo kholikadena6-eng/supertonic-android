@@ -72,7 +72,12 @@ object AssetManager {
     private fun checkReady(context: Context, version: String, files: List<String>): Boolean {
         val baseDir = File(context.filesDir, version)
         if (!baseDir.exists()) return false
-        return files.all { File(baseDir, it).exists() }
+        // Marker file ensures the entire batch was completed successfully
+        if (!File(baseDir, ".ready").exists()) return false
+        return files.all { 
+            val f = File(baseDir, it)
+            f.exists() && f.length() > 0 
+        }
     }
 
     suspend fun downloadV1(context: Context, onProgress: (String, Float, Long, Long) -> Unit) {
@@ -215,6 +220,10 @@ object AssetManager {
             val baseDir = File(context.filesDir, version)
             if (!baseDir.exists()) baseDir.mkdirs()
 
+            // Remove marker if we are starting a download (force re-validation)
+            val marker = File(baseDir, ".ready")
+            if (marker.exists()) marker.delete()
+
             // Pre-pass: probe every file's size upfront so the progress bar has a stable
             // denominator from the start (avoids jumpy / incorrect percentages mid-download).
             var totalBytes = 0L
@@ -283,6 +292,8 @@ object AssetManager {
                     totalBytes
                 )
             }
+            // All files verified/downloaded, create the ready marker
+            File(baseDir, ".ready").createNewFile()
             onProgress("Ready", 1.0f, cumulativeBytesDownloaded, totalBytes)
         }
     }

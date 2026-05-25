@@ -602,6 +602,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initializeEngine(version: String) {
+        val isReady = AssetManager.isVersionReady(this, version)
+        if (!isReady) {
+            Log.w("MainActivity", "Assets not ready for $version, triggering re-download")
+            startDownload(version)
+            return
+        }
+
         val modelPath = File(filesDir, "$version/onnx").absolutePath
         val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
 
