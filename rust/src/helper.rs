@@ -393,6 +393,7 @@ pub fn chunk_text(text: &str, lang: &str, max_len: Option<usize>) -> Vec<String>
         }
     }
 
+    chunks.retain(|c| c.chars().any(|ch| ch.is_alphanumeric()));
     if chunks.is_empty() {
         vec![String::new()]
     } else {

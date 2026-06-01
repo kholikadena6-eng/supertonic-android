@@ -192,7 +192,9 @@ object SupertonicTTS {
         } catch (e: Exception) {
             fallbackChunkText(text, lang)
         }
-        return joined.split("\u001E")
+        return joined.split("\u001E").filter { chunk ->
+            chunk.any { it.isLetterOrDigit() }
+        }
     }
 
     private fun fallbackChunkText(text: String, lang: String): String {
