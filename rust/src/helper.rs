@@ -173,7 +173,7 @@ pub fn sample_noisy_latent(
         .collect();
 
     let chunk_size = (base_chunk_size * chunk_compress) as usize;
-    let latent_len = (wav_len_max + chunk_size - 1) / chunk_size;
+    let latent_len = ((wav_len_max + chunk_size - 1) / chunk_size).max(1);
     let latent_dim_val = (latent_dim * chunk_compress) as usize;
 
     let mut noisy_latent = Array3::<f32>::zeros((bsz, latent_dim_val, latent_len));
@@ -192,7 +192,7 @@ pub fn sample_noisy_latent(
 
     let latent_lengths: Vec<usize> = wav_lengths
         .iter()
-        .map(|&len| (len + chunk_size - 1) / chunk_size)
+        .map(|&len| ((len + chunk_size - 1) / chunk_size).max(1))
         .collect();
 
     let latent_mask = length_to_mask(&latent_lengths, Some(latent_len));
@@ -522,9 +522,9 @@ impl TextToSpeech {
         let duration_data = dp_outputs["duration"].try_extract_tensor::<f32>()?;
         let mut duration: Vec<f32> = duration_data.1.to_vec();
         
-        // Apply speed factor to duration
+        // Apply speed factor to duration and clamp to a safe minimum of 0.1s to prevent empty/negative sequence lengths
         for dur in duration.iter_mut() {
-            *dur /= speed;
+            *dur = (*dur / speed).max(0.1);
         }
 
         // Encode text
