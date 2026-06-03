@@ -8,6 +8,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
@@ -173,6 +175,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     }
 
     private var currentSentenceIndex: Int = 0
+    private var cachedBookPath: String? = null
 
     companion object {
         const val CHANNEL_ID = "supertonic_playback"
@@ -559,6 +562,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             notifyListenerPlaybackStopped()
             updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
             stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 
@@ -766,6 +770,9 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     }
 
     private fun startForegroundService(status: String, showControls: Boolean) {
+        // Promote to a started service so it doesn't die when all activities unbind
+        startService(Intent(this, PlaybackService::class.java))
+
         val notification = buildNotification(status, showControls)
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
@@ -789,6 +796,11 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             .setContentIntent(pendingIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setStyle(androidx.media.app.NotificationCompat.MediaStyle().setMediaSession(mediaSession.sessionToken).setShowActionsInCompactView(0))
+
+        val coverIcon = getBookCoverIcon()
+        if (coverIcon != null) {
+            builder.setLargeIcon(coverIcon)
+        }
 
         if (showControls) {
             if (isPlaying) {
@@ -992,6 +1004,274 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             return trimmed
         }
         return if (trimmed.endsWith(" .")) trimmed else "$trimmed ."
+    }
+
+    private fun getBookCoverIcon(): android.graphics.drawable.Icon? {
+        val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+        val bookPath = prefs.getString("last_book_path", null) ?: return null
+        val lowerPath = bookPath.lowercase(java.util.Locale.US)
+        
+        val dir = File(cacheDir, "tts_output")
+        if (!dir.exists()) dir.mkdirs()
+        
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val isNightMode = uiMode == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val suffix = if (isNightMode) "dark" else "light"
+        
+        val epubFallbackFile = File(dir, "epub_fallback_$suffix.png")
+        val pdfFallbackFile = File(dir, "pdf_fallback_$suffix.png")
+        val bookCoverFile = File(dir, "current_book_cover.png")
+        
+        val targetFile: File
+        
+        if (lowerPath.endsWith(".epub")) {
+            if (bookPath == cachedBookPath && bookCoverFile.exists()) {
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", bookCoverFile)
+                return android.graphics.drawable.Icon.createWithContentUri(uri)
+            }
+            
+            val rawCover = extractEpubCover(bookPath)
+            if (rawCover != null) {
+                val bitmap = scaleAndPadToSquare(rawCover, targetSize = 1024)
+                if (bitmap != rawCover) {
+                    rawCover.recycle()
+                }
+                
+                try {
+                    java.io.FileOutputStream(bookCoverFile).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    bitmap.recycle()
+                    cachedBookPath = bookPath
+                    targetFile = bookCoverFile
+                } catch (e: Exception) {
+                    Log.e("PlaybackService", "Error saving cover bitmap to file", e)
+                    bitmap.recycle()
+                    return null
+                }
+            } else {
+                if (epubFallbackFile.exists()) {
+                    targetFile = epubFallbackFile
+                } else {
+                    val bitmap = createFallbackCover(isPdf = false)
+                    try {
+                        java.io.FileOutputStream(epubFallbackFile).use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+                        bitmap.recycle()
+                        targetFile = epubFallbackFile
+                    } catch (e: Exception) {
+                        Log.e("PlaybackService", "Error saving epub fallback to file", e)
+                        bitmap.recycle()
+                        return null
+                    }
+                }
+            }
+        } else if (lowerPath.endsWith(".pdf")) {
+            if (pdfFallbackFile.exists()) {
+                targetFile = pdfFallbackFile
+            } else {
+                val bitmap = createFallbackCover(isPdf = true)
+                try {
+                    java.io.FileOutputStream(pdfFallbackFile).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    bitmap.recycle()
+                    targetFile = pdfFallbackFile
+                } catch (e: Exception) {
+                    Log.e("PlaybackService", "Error saving pdf fallback to file", e)
+                    bitmap.recycle()
+                    return null
+                }
+            }
+        } else {
+            return null
+        }
+        
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            targetFile
+        )
+        return android.graphics.drawable.Icon.createWithContentUri(uri)
+    }
+
+    private fun extractEpubCover(filePath: String): Bitmap? {
+        val file = File(filePath)
+        if (!file.exists()) return null
+        
+        try {
+            java.util.zip.ZipFile(file).use { zip ->
+                // 1. Read META-INF/container.xml to find the OPF path
+                val containerEntry = zip.getEntry("META-INF/container.xml") ?: return null
+                val containerXml = zip.getInputStream(containerEntry).bufferedReader().use { it.readText() }
+                
+                val opfRegex = Regex("""<rootfile[^>]+full-path=["']([^"']+)["']""")
+                val matchResult = opfRegex.find(containerXml) ?: return null
+                val opfPath = matchResult.groupValues[1]
+                
+                val opfEntry = zip.getEntry(opfPath) ?: return null
+                val opfXml = zip.getInputStream(opfEntry).bufferedReader().use { it.readText() }
+                
+                // 2. Locate the cover image href from the OPF file
+                var coverHref: String? = null
+                
+                // Method A: Check manifest item with properties="cover-image" (EPUB 3)
+                val propertiesRegex = Regex("""<item[^>]+href=["']([^"']+)["'][^>]+properties=["']cover-image["']""")
+                val matchProp = propertiesRegex.find(opfXml)
+                if (matchProp != null) {
+                    coverHref = matchProp.groupValues[1]
+                }
+                
+                // Method B: Check metadata tag name="cover" content="id"
+                if (coverHref == null) {
+                    val coverMetaRegex = Regex("""<meta[^>]+name=["']cover["'][^>]+content=["']([^"']+)["']""")
+                    val matchMeta = coverMetaRegex.find(opfXml)
+                    if (matchMeta != null) {
+                        val coverId = matchMeta.groupValues[1]
+                        val itemRegex = Regex("""<item[^>]+id=["']${Regex.escape(coverId)}["'][^>]+href=["']([^"']+)["']""")
+                        val matchItem = itemRegex.find(opfXml)
+                        if (matchItem != null) {
+                            coverHref = matchItem.groupValues[1]
+                        }
+                    }
+                }
+                
+                val coverZipPath = if (coverHref != null) {
+                    val opfDir = File(opfPath).parent?.replace("\\", "/")
+                    val hrefResolved = coverHref.replace("\\", "/")
+                    if (!opfDir.isNullOrEmpty()) {
+                        normalizePath("$opfDir/$hrefResolved")
+                    } else {
+                        hrefResolved
+                    }
+                } else null
+                
+                if (coverZipPath != null) {
+                    val coverEntry = zip.getEntry(coverZipPath) ?: zip.getEntry(coverHref ?: "")
+                    if (coverEntry != null) {
+                        zip.getInputStream(coverEntry).use { input ->
+                            return BitmapFactory.decodeStream(input)
+                        }
+                    }
+                }
+                
+                // Method C: Fallback to scanning ZIP files for anything with "cover" and an image extension
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val name = entry.name.lowercase()
+                    if (name.contains("cover") && (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp"))) {
+                        zip.getInputStream(entry).use { input ->
+                            return BitmapFactory.decodeStream(input)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PlaybackService", "Error extracting EPUB cover", e)
+        }
+        return null
+    }
+
+    private fun normalizePath(path: String): String {
+        val parts = path.split("/")
+        val result = mutableListOf<String>()
+        for (part in parts) {
+            if (part == "..") {
+                if (result.isNotEmpty()) result.removeAt(result.size - 1)
+            } else if (part != "." && part.isNotEmpty()) {
+                result.add(part)
+            }
+        }
+        return result.joinToString("/")
+    }
+
+    private fun scaleAndPadToSquare(bitmap: Bitmap, targetSize: Int = 768): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        val maxDim = maxOf(width, height)
+        val scale = targetSize.toFloat() / maxDim
+        val newWidth = (width * scale).toInt()
+        val newHeight = (height * scale).toInt()
+        
+        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        val outputBitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(outputBitmap)
+        
+        val left = (targetSize - newWidth) / 2f
+        val top = (targetSize - newHeight) / 2f
+        
+        canvas.drawBitmap(scaledBitmap, left, top, null)
+        
+        if (scaledBitmap != bitmap) {
+            scaledBitmap.recycle()
+        }
+        
+        return outputBitmap
+    }
+
+    private fun createFallbackCover(isPdf: Boolean): Bitmap {
+        val size = 768
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        
+        // Detect Day/Night mode
+        val uiMode = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val isNightMode = uiMode == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        
+        // Day/Night aware colors (vibrant for light mode, deep/muted for dark mode)
+        val startColor = if (isPdf) {
+            if (isNightMode) 0xFF880E4F.toInt() else 0xFFE57373.toInt()
+        } else {
+            if (isNightMode) 0xFF1A237E.toInt() else 0xFF7986CB.toInt()
+        }
+        
+        val endColor = if (isPdf) {
+            if (isNightMode) 0xFF2D0010.toInt() else 0xFFC62828.toInt()
+        } else {
+            if (isNightMode) 0xFF0A0E29.toInt() else 0xFF3F51B5.toInt()
+        }
+        
+        val shader = android.graphics.LinearGradient(
+            0f, 0f, size.toFloat(), size.toFloat(),
+            startColor, endColor,
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        paint.shader = shader
+        
+        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+        
+        paint.shader = null
+        paint.color = 0x33FFFFFF
+        
+        val bookWidth = size * 0.4f
+        val bookHeight = size * 0.55f
+        val left = (size - bookWidth) / 2f
+        val top = (size - bookHeight) / 2f
+        val right = left + bookWidth
+        val bottom = top + bookHeight
+        
+        canvas.drawRoundRect(left, top, right, bottom, 24f, 24f, paint)
+        
+        paint.color = 0x22000000
+        canvas.drawRect(left, top, left + (bookWidth * 0.15f), bottom, paint)
+        
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.textSize = 64f
+        paint.textAlign = android.graphics.Paint.Align.CENTER
+        paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        
+        val formatText = if (isPdf) "PDF" else "EPUB"
+        val fontMetrics = paint.fontMetrics
+        val textY = (size / 2f) - (fontMetrics.descent + fontMetrics.ascent) / 2f
+        
+        canvas.drawText(formatText, size / 2f, textY, paint)
+        
+        return bitmap
     }
 
     override fun onDestroy() {

@@ -10,7 +10,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -38,6 +40,7 @@ fun PlaybackScreen(
     exportTotal: Int,
     sleepTimerSecondsRemaining: Int,
     onBackClick: () -> Unit,
+    onHomeClick: () -> Unit,
     onItemClick: (Int) -> Unit,
     onPlayPauseClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -58,8 +61,8 @@ fun PlaybackScreen(
             TopAppBar(
                 title = { Text("Now Playing", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = onHomeClick) {
+                        Icon(Icons.Default.Home, contentDescription = "Home")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -142,58 +145,69 @@ fun PlaybackScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isServiceActive || isPlaying) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .height(56.dp)
-                                    .clickable(onClick = onSleepTimerClick)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Snooze,
-                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label),
-                                    modifier = Modifier.size(24.dp),
-                                    tint = if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                val text = if (sleepTimerSecondsRemaining > 0) {
-                                    val mins = sleepTimerSecondsRemaining / 60
-                                    val secs = sleepTimerSecondsRemaining % 60
-                                    String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
-                                } else {
-                                    androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label)
-                                }
-                                Text(
-                                    text = text,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                    fontWeight = if (sleepTimerSecondsRemaining > 0) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .height(56.dp)
-                                    .clickable(onClick = onStopClick)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
-                                    modifier = Modifier.size(24.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
+                        // 1. Close / Stop Button
+                        val isStopEnabled = isServiceActive || isPlaying
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .height(56.dp)
+                                .clickable(enabled = isStopEnabled, onClick = onStopClick)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
+                                modifier = Modifier.size(24.dp),
+                                tint = if (isStopEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = if (isStopEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
                         }
 
+                        // 2. Sleep Timer Button
+                        val isTimerEnabled = isServiceActive || isPlaying
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .height(56.dp)
+                                .clickable(enabled = isTimerEnabled, onClick = onSleepTimerClick)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Snooze,
+                                contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label),
+                                modifier = Modifier.size(24.dp),
+                                tint = if (isTimerEnabled) {
+                                    if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val timerText = if (sleepTimerSecondsRemaining > 0 && isTimerEnabled) {
+                                val mins = sleepTimerSecondsRemaining / 60
+                                val secs = sleepTimerSecondsRemaining % 60
+                                String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+                            } else {
+                                androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label)
+                            }
+                            Text(
+                                text = timerText,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                fontWeight = if (sleepTimerSecondsRemaining > 0 && isTimerEnabled) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isTimerEnabled) {
+                                    if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                }
+                            )
+                        }
+
+                        // 3. Play / Pause Button (FAB)
                         FloatingActionButton(
                             onClick = onPlayPauseClick,
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -209,27 +223,49 @@ fun PlaybackScreen(
                             )
                         }
 
-                        if (isServiceActive || !isPlaying) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier
-                                    .height(56.dp)
-                                    .clickable(enabled = !isExporting, onClick = onExportClick)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Save,
-                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
-                                    modifier = Modifier.size(24.dp),
-                                    tint = if (isExporting) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                    color = if (isExporting) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                                )
-                            }
+                        // 4. Chapters / Library Button
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .height(56.dp)
+                                .clickable(onClick = onBackClick)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.chapters_label),
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.chapters_label),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                            )
+                        }
+
+                        // 5. Save / Export Button
+                        val isSaveEnabled = !isExporting && (isServiceActive || !isPlaying)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .height(56.dp)
+                                .clickable(enabled = isSaveEnabled, onClick = onExportClick)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Save,
+                                contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
+                                modifier = Modifier.size(24.dp),
+                                tint = if (isSaveEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = if (isSaveEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
                         }
                     }
                 }

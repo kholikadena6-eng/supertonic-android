@@ -58,6 +58,7 @@
     <string name="timer_label">Timer</string>
     <string name="stop_label">Stop</string>
     <string name="save_label">Save</string>
+    <string name="chapters_label">Chapters</string>
 
     <!-- History Activity -->
     <string name="history_title">History</string>

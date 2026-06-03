@@ -219,6 +219,13 @@ class PlaybackActivity : ComponentActivity() {
                         exportTotal = exportTotalState.intValue,
                         sleepTimerSecondsRemaining = sleepTimerSecondsState.intValue,
                         onBackClick = { finish() },
+                        onHomeClick = {
+                            val intent = Intent(this@PlaybackActivity, MainActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            }
+                            startActivity(intent)
+                            finish()
+                        },
                         onItemClick = { index -> playFromIndex(index) },
                         onPlayPauseClick = { handlePlayPause() },
                         onStopClick = { handleStop() },
