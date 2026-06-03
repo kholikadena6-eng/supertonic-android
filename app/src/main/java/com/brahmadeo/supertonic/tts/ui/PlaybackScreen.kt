@@ -14,12 +14,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.brahmadeo.supertonic.tts.ui.components.IndeterminateWavyProgressIndicator
 import com.brahmadeo.supertonic.tts.ui.components.WavyCircularProgressIndicator
 import com.brahmadeo.supertonic.tts.ui.components.WavyLinearProgressIndicator
@@ -34,12 +36,14 @@ fun PlaybackScreen(
     isExporting: Boolean,
     exportCurrent: Int,
     exportTotal: Int,
+    sleepTimerSecondsRemaining: Int,
     onBackClick: () -> Unit,
     onItemClick: (Int) -> Unit,
     onPlayPauseClick: () -> Unit,
     onStopClick: () -> Unit,
     onExportClick: () -> Unit,
-    onCancelExportClick: () -> Unit
+    onCancelExportClick: () -> Unit,
+    onSleepTimerClick: () -> Unit
 ) {
     val listState = rememberLazyListState()
 
@@ -139,13 +143,54 @@ fun PlaybackScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isServiceActive || isPlaying) {
-                            IconButton(
-                                onClick = onStopClick,
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .clickable(onClick = onSleepTimerClick)
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "Stop")
+                                Icon(
+                                    imageVector = Icons.Default.Snooze,
+                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label),
+                                    modifier = Modifier.size(24.dp),
+                                    tint = if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                val text = if (sleepTimerSecondsRemaining > 0) {
+                                    val mins = sleepTimerSecondsRemaining / 60
+                                    val secs = sleepTimerSecondsRemaining % 60
+                                    String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+                                } else {
+                                    androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.timer_label)
+                                }
+                                Text(
+                                    text = text,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    fontWeight = if (sleepTimerSecondsRemaining > 0) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (sleepTimerSecondsRemaining > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .clickable(onClick = onStopClick)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.stop_label),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
                             }
                         }
 
@@ -154,7 +199,8 @@ fun PlaybackScreen(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                             shape = MaterialTheme.shapes.large,
-                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp)
+                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp),
+                            modifier = Modifier.size(56.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -164,14 +210,25 @@ fun PlaybackScreen(
                         }
 
                         if (isServiceActive || !isPlaying) {
-                            IconButton(
-                                onClick = onExportClick,
-                                enabled = !isExporting,
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .height(56.dp)
+                                    .clickable(enabled = !isExporting, onClick = onExportClick)
                             ) {
-                                Icon(Icons.Default.Save, contentDescription = "Export")
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
+                                    modifier = Modifier.size(24.dp),
+                                    tint = if (isExporting) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = androidx.compose.ui.res.stringResource(id = com.brahmadeo.supertonic.tts.R.string.save_label),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = if (isExporting) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                )
                             }
                         }
                     }

@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import org.readium.r2.shared.publication.services.positions
 
 class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.OnAudioFocusChangeListener {
 
@@ -84,6 +85,16 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         override fun getCurrentIndex(): Int {
             return currentSentenceIndex
         }
+
+        override fun setSleepTimer(minutes: Int) {
+            serviceScope.launch {
+                this@PlaybackService.setSleepTimer(minutes)
+            }
+        }
+
+        override fun getSleepTimerSeconds(): Int {
+            return sleepTimerSecondsRemaining
+        }
     }
 
     private val listeners = RemoteCallbackList<IPlaybackListener>()
@@ -94,6 +105,8 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             try {
                 listener.onStateChanged(isPlaying, audioTrack != null || isSynthesizing, isSynthesizing)
                 listener.onProgress(currentSentenceIndex, -1)
+                listener.onTransitioningChanged(isTransitioningChapter)
+                listener.onSleepTimerUpdated(sleepTimerSecondsRemaining)
             } catch (_: RemoteException) {}
         }
     }
@@ -104,13 +117,26 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         }
     }
 
+    private fun notifyListenerSleepTimer(seconds: Int) {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onSleepTimerUpdated(seconds)
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
+    }
+
     private lateinit var mediaSession: MediaSessionCompat
     private var audioTrack: AudioTrack? = null
     private var lastTrackRate: Int = -1
     @Volatile private var isPlaying = false
     @Volatile private var isSynthesizing = false
     private val textNormalizer = TextNormalizer()
+    private val ebookParser by lazy { com.brahmadeo.supertonic.tts.utils.EbookParser(this) }
     private var resumeOnFocusGain = false
+    @Volatile private var isTransitioningChapter = false
+    @Volatile private var sleepTimerSecondsRemaining = 0
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var wakeLock: android.os.PowerManager.WakeLock? = null
@@ -168,7 +194,9 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
 
         audioManager = attributionContext.getSystemService(AUDIO_SERVICE) as AudioManager
         val powerManager = attributionContext.getSystemService(POWER_SERVICE) as android.os.PowerManager
-        wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Supertonic:PlaybackWakeLock")
+        wakeLock = powerManager.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Supertonic:PlaybackWakeLock").apply {
+            setReferenceCounted(false)
+        }
         
         mediaSession = MediaSessionCompat(attributionContext, "SupertonicMediaSession").apply {
             setCallback(object : MediaSessionCompat.Callback() {
@@ -222,6 +250,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     }
 
     private var synthesisJob: Job? = null
+    private var loadChapterJob: Job? = null
 
     fun synthesizeAndPlay(text: String, lang: String, stylePath: String, speed: Float, steps: Int, startIndex: Int = 0) {
         serviceScope.launch {
@@ -338,7 +367,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                                 SupertonicTTS.reset() // Explicit JNI Handshake
                                 synthesizeAndPlay(nextItem.text, nextItem.lang, nextItem.stylePath, nextItem.speed, nextItem.steps, nextItem.startIndex)
                             } else {
-                                stopPlayback()
+                                checkAutoPlayNextOrStop()
                             }
                         }
                     }
@@ -513,8 +542,20 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         resumeOnFocusGain = false
         notifyListenerState(false)
         abandonAudioFocus()
-        if (wakeLock?.isHeld == true) wakeLock?.release()
+        
+        if (isTransitioningChapter) {
+            isTransitioningChapter = false
+            notifyListenerTransitioning(false)
+        }
+        loadChapterJob?.cancel()
+
         if (removeNotification) {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+            setSleepTimer(0)
+            getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit()
+                .putBoolean("is_playing", false)
+                .apply()
+                
             notifyListenerPlaybackStopped()
             updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -552,6 +593,26 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         for (i in 0 until n) {
             try {
                 listeners.getBroadcastItem(i).onProgress(current, total)
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
+    }
+
+    private fun notifyListenerChapterChanged(newText: String, chapterHref: String?, pageIndex: Int) {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onChapterChanged(newText, chapterHref, pageIndex)
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
+    }
+
+    private fun notifyListenerTransitioning(isTransitioning: Boolean) {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onTransitioningChanged(isTransitioning)
             } catch (_: RemoteException) {}
         }
         listeners.finishBroadcast()
@@ -752,8 +813,195 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         }
     }
 
+    private var sleepTimerJob: Job? = null
+
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes == 0) {
+            sleepTimerSecondsRemaining = 0
+            notifyListenerSleepTimer(0)
+        } else {
+            sleepTimerSecondsRemaining = minutes * 60
+            notifyListenerSleepTimer(sleepTimerSecondsRemaining)
+            startSleepTimerCountdown()
+        }
+    }
+
+    private fun startSleepTimerCountdown() {
+        sleepTimerJob = serviceScope.launch {
+            while (sleepTimerSecondsRemaining > 0) {
+                delay(1000L)
+                if (isPlaying) {
+                    sleepTimerSecondsRemaining -= 1
+                    notifyListenerSleepTimer(sleepTimerSecondsRemaining)
+                }
+            }
+            
+            val intent = Intent("com.brahmadeo.supertonic.tts.SLEEP_TIMER_EXPIRED").apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+            stopServicePlayback()
+        }
+    }
+
+    private fun checkAutoPlayNextOrStop() {
+        val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+        val autoPlayNext = prefs.getBoolean("pref_auto_play_next", false)
+        val bookPath = prefs.getString("last_book_path", null)
+
+        if (autoPlayNext && !bookPath.isNullOrEmpty()) {
+            loadAndPlayNextChapterOrPage(bookPath)
+        } else {
+            stopPlayback()
+        }
+    }
+
+    private fun loadAndPlayNextChapterOrPage(bookPath: String) {
+        val ebookFile = File(bookPath)
+        if (!ebookFile.exists()) {
+            stopPlayback()
+            return
+        }
+
+        isTransitioningChapter = true
+        notifyListenerTransitioning(true)
+        wakeLock?.acquire(5 * 60 * 1000L)
+
+        loadChapterJob?.cancel()
+        loadChapterJob = serviceScope.launch {
+            val pubResult = ebookParser.openPublication(ebookFile)
+            val publication = pubResult.getOrNull()
+            if (publication == null) {
+                isTransitioningChapter = false
+                notifyListenerTransitioning(false)
+                stopPlayback()
+                return@launch
+            }
+
+            val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+            val currentLang = prefs.getString("last_lang", "en") ?: "en"
+            val currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
+            val currentSpeed = prefs.getFloat("last_speed", 1.1f)
+            val currentSteps = prefs.getInt("last_steps", 5)
+            val currentChapterHref = prefs.getString("last_chapter_href", null)
+            val currentPageIndex = prefs.getInt("last_page_index", -1)
+
+            val conformsToPdf = publication.metadata.conformsTo.contains(org.readium.r2.shared.publication.Publication.Profile.PDF) == true
+            val isPdfMediaType = publication.readingOrder.firstOrNull()?.mediaType?.matches(org.readium.r2.shared.util.mediatype.MediaType.PDF) == true
+            val isPdf = conformsToPdf || isPdfMediaType
+
+            if (isPdf) {
+                val nextPageIndex = currentPageIndex + 1
+                val totalPages = publication.positions().size
+                if (nextPageIndex in 0 until totalPages) {
+                    val extractResult = ebookParser.extractPages(ebookFile, publication, listOf(nextPageIndex))
+                    extractResult.onSuccess { nextText ->
+                        val preparedText = prepareTextForTts(nextText, currentLang)
+                        
+                        prefs.edit()
+                            .putString("last_text", preparedText)
+                            .putInt("last_page_index", nextPageIndex)
+                            .remove("last_chapter_href")
+                            .putInt("last_index", 0)
+                            .apply()
+                        
+                        com.brahmadeo.supertonic.tts.utils.EbookManager.setLastReadChapter(this@PlaybackService, bookPath, "page_$nextPageIndex")
+                        
+
+                        notifyListenerChapterChanged(preparedText, null, nextPageIndex)
+
+                        SupertonicTTS.reset()
+                        synthesizeAndPlay(preparedText, currentLang, currentVoicePath, currentSpeed, currentSteps, 0)
+
+                        isTransitioningChapter = false
+                        notifyListenerTransitioning(false)
+                    }.onFailure {
+                        isTransitioningChapter = false
+                        notifyListenerTransitioning(false)
+                        stopPlayback()
+                    }
+                } else {
+                    isTransitioningChapter = false
+                    notifyListenerTransitioning(false)
+                    stopPlayback()
+                }
+            } else {
+                val toc = publication.tableOfContents
+                val links = toc.ifEmpty { publication.readingOrder }
+                
+                fun List<org.readium.r2.shared.publication.Link>.flatten(): List<org.readium.r2.shared.publication.Link> {
+                    val result = mutableListOf<org.readium.r2.shared.publication.Link>()
+                    fun traverse(links: List<org.readium.r2.shared.publication.Link>) {
+                        for (link in links) {
+                            result.add(link)
+                            traverse(link.children)
+                        }
+                    }
+                    traverse(this)
+                    return result
+                }
+                
+                val flatLinks = links.flatten()
+                val currentHref = currentChapterHref
+                val currentIndex = flatLinks.indexOfFirst { it.href.toString() == currentHref }
+
+                if (currentIndex != -1 && currentIndex + 1 < flatLinks.size) {
+                    val nextLink = flatLinks[currentIndex + 1]
+                    val nextHref = nextLink.href.toString()
+                    
+                    val extractResult = ebookParser.extractText(publication, nextLink)
+                    extractResult.onSuccess { nextText ->
+                        val preparedText = prepareTextForTts(nextText, currentLang)
+                        
+                        prefs.edit()
+                            .putString("last_text", preparedText)
+                            .putString("last_chapter_href", nextHref)
+                            .remove("last_page_index")
+                            .putInt("last_index", 0)
+                            .apply()
+                        
+                        com.brahmadeo.supertonic.tts.utils.EbookManager.setLastReadChapter(this@PlaybackService, bookPath, nextHref)
+                        
+
+                        notifyListenerChapterChanged(preparedText, nextHref, -1)
+
+                        SupertonicTTS.reset()
+                        synthesizeAndPlay(preparedText, currentLang, currentVoicePath, currentSpeed, currentSteps, 0)
+                        
+                        isTransitioningChapter = false
+                        notifyListenerTransitioning(false)
+                    }.onFailure {
+                        isTransitioningChapter = false
+                        notifyListenerTransitioning(false)
+                        stopPlayback()
+                    }
+                } else {
+                    isTransitioningChapter = false
+                    notifyListenerTransitioning(false)
+                    stopPlayback()
+                }
+            }
+        }
+    }
+
+    private fun prepareTextForTts(text: String?, lang: String): String {
+        if (text.isNullOrEmpty()) return ""
+        val trimmed = text.trim()
+        if (lang.lowercase().startsWith("ko")) {
+            return trimmed
+        }
+        return if (trimmed.endsWith(" .")) trimmed else "$trimmed ."
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        SupertonicTTS.setCancelled(true)
+        sleepTimerJob?.cancel()
+        loadChapterJob?.cancel()
+        if (wakeLock?.isHeld == true) {
+            try { wakeLock?.release() } catch (_: Exception) {}
+        }
         mediaSession.release()
         try {
             audioTrack?.release()

@@ -35,6 +35,16 @@ def getRustTargets() {
     return ["arm64", "arm", "x86", "x86_64"]
 }
 
+def getAndroidAbiFilters() {
+    def targets = getRustTargets()
+    def filters = []
+    if (targets.contains("arm64")) filters.add("arm64-v8a")
+    if (targets.contains("arm")) filters.add("armeabi-v7a")
+    if (targets.contains("x86")) filters.add("x86")
+    if (targets.contains("x86_64")) filters.add("x86_64")
+    return filters
+}
+
 def isSplitApksEnabled() {
     return project.hasProperty('splitApks') && project.property('splitApks').toString().toBoolean()
 }
@@ -55,13 +65,18 @@ cargo {
     // F-Droid & Environment Toolchain Path Resolution
     def home = System.getenv("HOME")
     def candidatePaths = ["${home}/.cargo/bin", "/home/vagrant/.cargo/bin", "/usr/local/cargo/bin", "/usr/bin"]
+    def resolvedCargo = null
+    def resolvedRustc = null
 
     candidatePaths.each { loc ->
-        def cargo = new File(loc, "cargo")
-        def rustc = new File(loc, "rustc")
-        if (cargo.exists() && cargoCommand == null) cargoCommand = cargo.absolutePath
-        if (rustc.exists() && rustcCommand == null) rustcCommand = rustc.absolutePath
+        def cargoFile = new File(loc, "cargo")
+        def rustcFile = new File(loc, "rustc")
+        if (cargoFile.exists() && resolvedCargo == null) resolvedCargo = cargoFile.absolutePath
+        if (rustcFile.exists() && resolvedRustc == null) resolvedRustc = rustcFile.absolutePath
     }
+
+    if (resolvedCargo) cargoCommand = resolvedCargo
+    if (resolvedRustc) rustcCommand = resolvedRustc
 }
 
 // --- NATIVE LIBRARY TASKS ---
@@ -98,7 +113,7 @@ ext.abiCodes = ['armeabi-v7a': 1, 'arm64-v8a': 2, 'x86': 3, 'x86_64': 4]
 
 android {
     namespace 'com.brahmadeo.supertonic.tts'
-    compileSdk = 36
+    compileSdk 36
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
@@ -106,7 +121,11 @@ android {
         minSdk 24
         targetSdk 36
         versionCode 18
-        versionName "3.1.9"
+        versionName "3.2.0"
+
+        ndk {
+            abiFilters.addAll(getAndroidAbiFilters())
+        }
 
         // Cargo.targets handles the build, and splits handles the packaging.
     }
@@ -172,7 +191,7 @@ kotlin {
         freeCompilerArgs.addAll(
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
             "-opt-in=org.readium.r2.shared.InternalReadiumApi",
-            "-opt-in=org.readium.r2.shared.util.InternalReadiumApi"
+            "-opt-in=org.readium.r2.shared.ExperimentalReadiumApi"
         )
     }
 }

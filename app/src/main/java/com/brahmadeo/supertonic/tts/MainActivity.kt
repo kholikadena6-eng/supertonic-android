@@ -114,6 +114,15 @@ class MainActivity : ComponentActivity() {
             }
         }
         override fun onExportComplete(success: Boolean, path: String) { }
+        override fun onChapterChanged(newText: String, chapterHref: String?, pageIndex: Int) {
+            runOnUiThread {
+                if (newText.isNotEmpty()) {
+                    viewModel.miniPlayerTitle.value = newText
+                }
+            }
+        }
+        override fun onTransitioningChanged(isTransitioning: Boolean) { }
+        override fun onSleepTimerUpdated(secondsRemaining: Int) { }
     }
 
     private val connection = object : ServiceConnection {
