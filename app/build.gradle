@@ -12,16 +12,18 @@ plugins {
 
 // Extract properties dynamically across all build environments
 def getRustTargets() {
-    // 1. Always build all for Play Store App Bundles
-    def isBundle = gradle.startParameter.taskNames.any { it.toLowerCase().contains("bundle") }
-    if (isBundle) return ["arm64", "arm", "x86", "x86_64"]
-
-    // 2. Check Command Line: -PrustTargets=arm64
+    // 1. Command Line (highest priority): -PrustTargets=arm64
+    // Used by F-Droid and GitHub Actions.
     if (project.hasProperty('rustTargets')) {
         return project.property('rustTargets').toString().split(',') as List
     }
 
-    // 3. Check local.properties: rust.targets=arm64
+    // 2. Always build all for Play Store App Bundles
+    // Ensures bundleRelease has everything unless explicitly overridden by #1.
+    def isBundle = gradle.startParameter.taskNames.any { it.toLowerCase().contains("bundle") }
+    if (isBundle) return ["arm64", "arm", "x86", "x86_64"]
+
+    // 3. Check local.properties (local development fallback): rust.targets=arm64
     def localProps = new Properties()
     def localPropsFile = project.rootProject.file('local.properties')
     if (localPropsFile.exists()) {
@@ -87,10 +89,19 @@ tasks.register('extractOnnxLib', Copy) {
     include "jni/**/libonnxruntime.so"
 }
 
-tasks.register('copyRustLibs', Copy) {
+tasks.register('copyRustLibs', Sync) {
     dependsOn 'cargoBuild'
     from layout.buildDirectory.dir("rustJniLibs/android")
     into layout.buildDirectory.dir("finalJniLibs")
+
+    // Explicitly filter to only include targets requested for THIS build.
+    // Sync will automatically delete any existing folders in finalJniLibs
+    // that are NOT in the include list (preventing stale libraries from previous builds).
+    def abiFilters = getAndroidAbiFilters()
+    include { details ->
+        if (details.directory) return true
+        abiFilters.any { abi -> details.relativePath.segments.contains(abi) }
+    }
 }
 
 tasks.configureEach { task ->
