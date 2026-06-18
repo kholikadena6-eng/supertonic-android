@@ -102,8 +102,8 @@ Builds:
       - rust/vendor
     ndk: r29
 
-  - versionName: 3.1.4
-    versionCode: 17000001
+  - versionName: 3.2.2
+    versionCode: 19000001
     commit: 8d004d6278166ec90288720922815992dd59e0e1
     subdir: app
     sudo:
@@ -134,8 +134,8 @@ Builds:
       - rust/vendor
     ndk: r29
 
-  - versionName: 3.1.4
-    versionCode: 17000002
+  - versionName: 3.2.2
+    versionCode: 19000002
     commit: 8d004d6278166ec90288720922815992dd59e0e1
     subdir: app
     sudo:
@@ -166,8 +166,8 @@ Builds:
       - rust/vendor
     ndk: r29
 
-  - versionName: 3.1.4
-    versionCode: 17000003
+  - versionName: 3.2.2
+    versionCode: 19000003
     commit: 8d004d6278166ec90288720922815992dd59e0e1
     subdir: app
     sudo:
@@ -198,8 +198,8 @@ Builds:
       - rust/vendor
     ndk: r29
 
-  - versionName: 3.1.4
-    versionCode: 17000004
+  - versionName: 3.2.2
+    versionCode: 19000004
     commit: 8d004d6278166ec90288720922815992dd59e0e1
     subdir: app
     sudo:
@@ -237,5 +237,5 @@ VercodeOperation:
   - '%c * 1000000 + 2'
   - '%c * 1000000 + 3'
   - '%c * 1000000 + 4'
-CurrentVersion: 3.1.4
-CurrentVersionCode: 17000004
+CurrentVersion: 3.2.2
+CurrentVersionCode: 19000004
