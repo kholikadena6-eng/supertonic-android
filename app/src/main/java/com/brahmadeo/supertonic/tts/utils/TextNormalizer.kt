@@ -8,10 +8,24 @@ import com.brahmadeo.supertonic.tts.SupertonicTTS
  * Handles currencies, numbers, abbreviations, and more for natural TTS
  */
 class TextNormalizer {
-    private val currencyNormalizer = CurrencyNormalizer()
-    
-    data class Rule(val pattern: Pattern, val replacement: (java.util.regex.Matcher) -> String)
-    private val rules: List<Rule> = initializeRules()
+    companion object {
+        private val NAME_PREFIX_REGEX = Regex("\\b(Mc|Mac|Fitz)([A-Z])")
+        
+        // Hoisted patterns from normalize() and normalizeHindi()
+        private val SMUSHED_SENTENCE_PATTERN = Pattern.compile("([a-z])\\.([A-Z])")
+        private val SMUSHED_WORD_PATTERN_1 = Pattern.compile("([a-z])([A-Z])")
+        private val SMUSHED_WORD_PATTERN_2 = Pattern.compile("([A-Z])([A-Z][a-z])")
+        private val LETTER_NUMBER_PATTERN = Pattern.compile("([a-zA-Z])(\\d)")
+        private val NUMBER_PATTERN = Pattern.compile("\\b(\\d+(?:\\.\\d+)?)\\b")
+        
+        // Hindi specific patterns
+        private val COMMA_PATTERN = Pattern.compile("(?<=\\d),(?=\\d)")
+        private val RANGE_PATTERN = Pattern.compile("\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\b")
+        private val CURRENCY_PATTERN = Pattern.compile("(?:\\bINR|₹)\\s*(\\d+(?:\\.\\d+)?)\\b")
+        private val PERCENT_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*%")
+
+        data class Rule(val pattern: Pattern, val replacement: (java.util.regex.Matcher) -> String)
+        private val rules: List<Rule> = initializeRules()
 
     private fun initializeRules(): List<Rule> {
         val rulesList = mutableListOf<Rule>()
@@ -207,6 +221,8 @@ class TextNormalizer {
             else -> "${num}th"
         }
     }
+        private val currencyNormalizer = CurrencyNormalizer()
+    }
 
     fun normalize(text: String, lang: String = "en", isAdvancedEnabled: Boolean = false): String {
         val lowerLang = lang.lowercase()
@@ -231,22 +247,24 @@ class TextNormalizer {
             return processedText
         }
 
+        // Normalize names like McDonald, MacDonald, FitzGerald to Mcdonald, Macdonald, Fitzgerald
+        // to prevent them from being split by SMUSHED_WORD_PATTERN_1 and to ensure correct pronunciation.
+        val preparedText = NAME_PREFIX_REGEX.replace(processedText) { matchResult ->
+            matchResult.groupValues[1] + matchResult.groupValues[2][0].lowercaseChar()
+        }
+
         // Step 0: Fix smushed text from webpage layouts
         // Fix smushed sentences: lowercase char, period, uppercase char (reserved.Reuse)
-        val smushedSentencePattern = Pattern.compile("([a-z])\\.([A-Z])")
-        var fixedText = smushedSentencePattern.matcher(processedText).replaceAll("$1. $2")
+        var fixedText = SMUSHED_SENTENCE_PATTERN.matcher(preparedText).replaceAll("$1. $2")
         
         // Fix smushed words: lowercase char, uppercase char (economyIMF)
-        val smushedWordPattern1 = Pattern.compile("([a-z])([A-Z])")
-        fixedText = smushedWordPattern1.matcher(fixedText).replaceAll("$1 $2")
+        fixedText = SMUSHED_WORD_PATTERN_1.matcher(fixedText).replaceAll("$1 $2")
         
         // Fix smushed words: Uppercase followed by Uppercase+Lowercase (FTNews)
-        val smushedWordPattern2 = Pattern.compile("([A-Z])([A-Z][a-z])")
-        fixedText = smushedWordPattern2.matcher(fixedText).replaceAll("$1 $2")
+        fixedText = SMUSHED_WORD_PATTERN_2.matcher(fixedText).replaceAll("$1 $2")
 
         // Fix letter-number merges (Published8 -> Published 8)
-        val letterNumberPattern = Pattern.compile("([a-zA-Z])(\\d)")
-        fixedText = letterNumberPattern.matcher(fixedText).replaceAll("$1 $2")
+        fixedText = LETTER_NUMBER_PATTERN.matcher(fixedText).replaceAll("$1 $2")
 
         // Step 1: Currency
         var normalized = currencyNormalizer.normalize(fixedText)
@@ -265,8 +283,7 @@ class TextNormalizer {
 
         // Step 3: Convert remaining numbers to words (CRITICAL for C++ Engine)
         // Matches integers and decimals (e.g. "300000" -> "three hundred thousand")
-        val numberPattern = Pattern.compile("\\b(\\d+(?:\\.\\d+)?)\\b")
-        val matcher = numberPattern.matcher(normalized)
+        val matcher = NUMBER_PATTERN.matcher(normalized)
         val sb = StringBuffer()
         while (matcher.find()) {
             val numStr = matcher.group(1) ?: ""
@@ -298,12 +315,10 @@ class TextNormalizer {
         var normalized = convertDevanagariDigits(text)
 
         // 2. Clean up commas in numbers (e.g. "1,50,000" -> "150000")
-        val commaPattern = Pattern.compile("(?<=\\d),(?=\\d)")
-        normalized = commaPattern.matcher(normalized).replaceAll("")
+        normalized = COMMA_PATTERN.matcher(normalized).replaceAll("")
 
         // 3. Hindi Range Normalization (e.g., "10-15" -> "10 से 15")
-        val rangePattern = Pattern.compile("\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\b")
-        val rangeMatcher = rangePattern.matcher(normalized)
+        val rangeMatcher = RANGE_PATTERN.matcher(normalized)
         val rangeSb = StringBuffer()
         while (rangeMatcher.find()) {
             val replacement = "${rangeMatcher.group(1)} से ${rangeMatcher.group(2)}"
@@ -313,8 +328,7 @@ class TextNormalizer {
         normalized = rangeSb.toString()
 
         // 4. Currency symbols (e.g. "₹500" or "INR 500" -> "500 रुपये")
-        val currencyPattern = Pattern.compile("(?:\\bINR|₹)\\s*(\\d+(?:\\.\\d+)?)\\b")
-        val currencyMatcher = currencyPattern.matcher(normalized)
+        val currencyMatcher = CURRENCY_PATTERN.matcher(normalized)
         val currencySb = StringBuffer()
         while (currencyMatcher.find()) {
             val amount = currencyMatcher.group(1) ?: ""
@@ -325,8 +339,7 @@ class TextNormalizer {
         normalized = currencySb.toString()
 
         // 5. Percentages (e.g. "5%" -> "5 प्रतिशत")
-        val percentPattern = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*%")
-        val percentMatcher = percentPattern.matcher(normalized)
+        val percentMatcher = PERCENT_PATTERN.matcher(normalized)
         val percentSb = StringBuffer()
         while (percentMatcher.find()) {
             val amount = percentMatcher.group(1) ?: ""
@@ -337,8 +350,7 @@ class TextNormalizer {
         normalized = percentSb.toString()
 
         // 6. Convert remaining numbers to words (CRITICAL for C++ Engine)
-        val numberPattern = Pattern.compile("\\b(\\d+(?:\\.\\d+)?)\\b")
-        val numberMatcher = numberPattern.matcher(normalized)
+        val numberMatcher = NUMBER_PATTERN.matcher(normalized)
         val sb = StringBuffer()
         while (numberMatcher.find()) {
             val numStr = numberMatcher.group(1) ?: ""
